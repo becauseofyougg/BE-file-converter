@@ -1,23 +1,205 @@
+name: file-converter
+
+x-postgres-credentials: &postgres-credentials
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  POSTGRES_MIGRATIONS_RUN: "true"
+
+x-s3-credentials: &s3-credentials
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: us-east-1
+  S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  S3_BUCKET_UPLOADS: uploads
+  S3_BUCKET_RESULTS: results
+  S3_FORCE_PATH_STYLE: "true"
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  environment: &service-environment
+    NODE_ENV: ${NODE_ENV:-development}
+    LOG_LEVEL: ${LOG_LEVEL:-debug}
+    HEALTH_CHECK_ENABLED: "true"
+    RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672
+    RABBITMQ_PREFETCH: "1"
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+
 services:
+  # --------------------------------------------------------------- infra ----
   postgres:
     image: postgres:18-alpine
-    container_name: mnt-postgres
-    env_file:
-      - .env
+    container_name: fc-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: postgres
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: fc-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: fc-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Creates the two private buckets, then exits.
+  minio-init:
+    image: minio/mc:latest
+    container_name: fc-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} &&
+      mc mb --ignore-existing local/uploads &&
+      mc mb --ignore-existing local/results &&
+      echo 'buckets ready'
+      "
+
+  # Catches all SMTP in development, so no real mail provider is needed.
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: fc-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  # ------------------------------------------------------------ services ----
+  api-gateway:
+    <<: *service-defaults
+    container_name: fc-api-gateway
+    build:
+      context: .
+      dockerfile: docker/api-gateway.Dockerfile
+    environment:
+      <<: [*service-environment, *s3-credentials]
+      SERVICE_NAME: api-gateway
+      PORT: 3000
+      COOKIE_SECRET: ${COOKIE_SECRET:-change-me}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5174,http://localhost:4200}
+      THROTTLE_GLOBAL_TTL: 10000
+      THROTTLE_GLOBAL_LIMIT: 100
+    ports:
+      - "${GATEWAY_PORT:-3000}:3000"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  identity-service:
+    <<: *service-defaults
+    container_name: fc-identity-service
+    build:
+      context: .
+      dockerfile: docker/identity-service.Dockerfile
+    environment:
+      <<: [*service-environment, *postgres-credentials]
+      SERVICE_NAME: identity-service
+      PORT: 3001
+      POSTGRES_DB: identity
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-at-least-32-characters-long}
+      AUTH_CONFIRM_REGISTRATION: ${AUTH_CONFIRM_REGISTRATION:-true}
+      AUTH_CONFIRM_METHOD: ${AUTH_CONFIRM_METHOD:-otp}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # Scale with: docker compose up --scale conversion-service=5
+  conversion-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/conversion-service.Dockerfile
+      args:
+        # Empty for the pure-Node image family; set per family when a
+        # heavyweight engine lands (ffmpeg, libreoffice).
+        CONVERTER_PACKAGES: ""
+    environment:
+      <<: [*service-environment, *postgres-credentials, *s3-credentials]
+      SERVICE_NAME: conversion-service
+      PORT: 3002
+      POSTGRES_DB: conversion
+      CONVERSION_FAMILY: ${CONVERSION_FAMILY:-image}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  notification-service:
+    <<: *service-defaults
+    container_name: fc-notification-service
+    build:
+      context: .
+      dockerfile: docker/notification-service.Dockerfile
+    environment:
+      <<: [*service-environment, *postgres-credentials]
+      SERVICE_NAME: notification-service
+      PORT: 3003
+      POSTGRES_DB: notification
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_FROM: ${SMTP_FROM:-no-reply@file-converter.local}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+
 volumes:
   postgres_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  minio_data:
     driver: local

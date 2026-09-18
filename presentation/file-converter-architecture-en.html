@@ -1,0 +1,1089 @@
+<title>File Converter Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap">
+
+<style>
+  :root {
+    --ground: #F1F4F3;
+    --surface: #FFFFFF;
+    --surface-2: #E7EDEB;
+    --ink: #131A1B;
+    --ink-2: #3C4A4B;
+    --muted: #667576;
+    --line: #D5DEDC;
+    --line-strong: #B6C3C0;
+    --accent: #0C6B60;
+    --accent-soft: #DCEDE9;
+    --signal: #96501E;
+    --signal-soft: #F4E6DA;
+    --code-bg: #EBF1EF;
+
+    --serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F1415;
+      --surface: #161D1E;
+      --surface-2: #1C2525;
+      --ink: #E7EDEB;
+      --ink-2: #BFCBC9;
+      --muted: #8A9A99;
+      --line: #253030;
+      --line-strong: #384544;
+      --accent: #54C9B6;
+      --accent-soft: #10302C;
+      --signal: #E09A63;
+      --signal-soft: #30221A;
+      --code-bg: #111819;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0F1415;
+    --surface: #161D1E;
+    --surface-2: #1C2525;
+    --ink: #E7EDEB;
+    --ink-2: #BFCBC9;
+    --muted: #8A9A99;
+    --line: #253030;
+    --line-strong: #384544;
+    --accent: #54C9B6;
+    --accent-soft: #10302C;
+    --signal: #E09A63;
+    --signal-soft: #30221A;
+    --code-bg: #111819;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.62;
+    padding-inline: 20px;
+    padding-block: 44px 72px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc { max-width: 860px; margin-inline: auto; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(30px, 6vw, 46px);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 10px 0 12px;
+  }
+
+  .standfirst {
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  .langbar {
+    margin-top: 18px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .langbar a { color: var(--accent); text-underline-offset: 3px; }
+
+  .meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin-block: 26px 8px;
+  }
+  .meta div { background: var(--surface); padding: 12px 14px; }
+  .meta dt {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 4px;
+  }
+  .meta dd { margin: 0; font-size: 14px; font-weight: 500; }
+
+  .toc { margin-block: 40px; border-top: 2px solid var(--ink); padding-top: 14px; }
+  .toc h2 { all: unset; display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .toc ol { list-style: none; margin: 12px 0 0; padding: 0; columns: 2; column-gap: 40px; }
+  .toc li { break-inside: avoid; font-size: 14px; padding-block: 2px; }
+  .toc a { color: var(--ink-2); text-decoration: none; }
+  .toc a:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .toc .n { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-right: 10px; }
+
+  section { margin-block: 52px; scroll-margin-top: 20px; }
+
+  h2:not(.toc h2) {
+    display: grid;
+    grid-template-columns: 3.1rem minmax(0, 1fr);
+    align-items: baseline;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(21px, 3.4vw, 27px);
+    line-height: 1.22;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  h2 .num { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+
+  h3 { font-family: var(--sans); font-weight: 600; font-size: 15px; letter-spacing: 0.01em; margin: 30px 0 8px; }
+
+  p { margin: 0 0 14px; max-width: 68ch; }
+  ul, ol.body-list { margin: 0 0 14px; padding-left: 20px; max-width: 68ch; }
+  li { margin-bottom: 7px; }
+  strong { font-weight: 600; }
+  em { font-style: italic; color: var(--ink-2); }
+  a { color: var(--accent); }
+
+  code { font-family: var(--mono); font-size: 0.87em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    padding: 16px 18px;
+    overflow-x: auto;
+    margin: 0 0 18px;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  pre .c { color: var(--muted); }
+
+  .scroll { overflow-x: auto; margin: 0 0 18px; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 520px; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td code { font-size: 12px; }
+  .svc { font-family: var(--mono); font-size: 12.5px; color: var(--ink); white-space: nowrap; }
+  .matrix td, .matrix th { text-align: center; font-family: var(--mono); font-size: 12px; }
+  .matrix td:first-child, .matrix th:first-child { text-align: left; }
+  .matrix .yes { color: var(--accent); font-weight: 500; }
+  .matrix .no { color: var(--line-strong); }
+
+  .rec { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 13px 16px; margin: 0 0 18px; }
+  .rec p { margin: 0; max-width: 64ch; }
+  .rec .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .open { border: 1px solid var(--signal); background: var(--signal-soft); padding: 18px 20px; }
+  section.open h2 { border-bottom-color: var(--signal); margin-bottom: 14px; }
+  section.open h2 .num { color: var(--signal); }
+  .open ol { margin: 0; padding-left: 22px; }
+  .open li::marker { font-family: var(--mono); font-size: 12px; color: var(--signal); }
+
+  figure { margin: 0 0 20px; }
+  .diagram { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); padding: 14px; }
+  .diagram svg { width: 100%; min-width: 760px; height: auto; display: block; }
+  figcaption { font-size: 12.5px; color: var(--muted); margin-top: 10px; max-width: 68ch; }
+
+  .n-box { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.2; }
+  .n-key { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .n-mq { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1.4; }
+  .n-db { fill: none; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+  .n-t { font-family: var(--mono); font-size: 12px; fill: var(--ink); }
+  .n-s { font-family: var(--sans); font-size: 9.5px; fill: var(--muted); }
+  .n-dbt { font-family: var(--mono); font-size: 9px; fill: var(--muted); }
+  .e-cmd { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+  .e-evt { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 3; }
+  .e-out { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+  .e-l { font-family: var(--sans); font-size: 9.5px; fill: var(--muted); }
+  .e-la { font-family: var(--mono); font-size: 9px; fill: var(--accent); }
+  .e-lr { font-family: var(--sans); font-size: 9.5px; fill: var(--accent); }
+
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .chip {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    padding: 4px 9px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .chip.ok { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .chip.bad { border-color: var(--signal); background: var(--signal-soft); color: var(--signal); }
+  .arr { font-family: var(--mono); color: var(--muted); font-size: 13px; }
+  .arr.txt { font-family: var(--sans); font-size: 12px; }
+
+  .phases { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .phases li { display: grid; grid-template-columns: 4.2rem minmax(0, 1fr); gap: 0 14px; padding: 12px 0; border-bottom: 1px solid var(--line); margin: 0; }
+  .phases .ph { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); padding-top: 2px; }
+  .phases p { margin: 0; font-size: 14px; }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 16px;
+    border-top: 2px solid var(--ink);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+  }
+
+  @media (max-width: 620px) {
+    .toc ol { columns: 1; }
+    h2:not(.toc h2) { grid-template-columns: 2.5rem minmax(0, 1fr); }
+  }
+</style>
+
+<div class="doc">
+
+  <header>
+    <p class="eyebrow">Architecture proposal &middot; agreed with mentor</p>
+    <h1>File Converter Backend</h1>
+    <p class="standfirst">Five NestJS services in one monorepo, a RabbitMQ work queue, S3-compatible object storage. The load-bearing decision: <strong>HTTP requests never do the conversion.</strong></p>
+
+    <p class="langbar">EN &middot; <a href="https://claude.ai/artifact/EXe8A6MU3Jrv7sTh63L2Hf">Русская версия</a></p>
+
+    <dl class="meta">
+      <div><dt>Status</dt><dd>Structure agreed</dd></div>
+      <div><dt>Date</dt><dd>18 Sep 2026</dd></div>
+      <div><dt>Base</dt><dd>NestJS 11 &middot; Fastify</dd></div>
+      <div><dt>Persistence</dt><dd>PostgreSQL &middot; TypeORM</dd></div>
+      <div><dt>Transport</dt><dd>RabbitMQ</dd></div>
+      <div><dt>Objects</dt><dd>MinIO / S3</dd></div>
+    </dl>
+  </header>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><span class="n">01</span><a href="#s1">Summary</a></li>
+      <li><span class="n">02</span><a href="#s2">Service decomposition</a></li>
+      <li><span class="n">03</span><a href="#s3">Repository layout</a></li>
+      <li><span class="n">04</span><a href="#s4">Messaging design</a></li>
+      <li><span class="n">05</span><a href="#s5">The conversion pipeline</a></li>
+      <li><span class="n">06</span><a href="#s6">Data conversion</a></li>
+      <li><span class="n">07</span><a href="#s7">Storage</a></li>
+      <li><span class="n">08</span><a href="#s8">Data model</a></li>
+      <li><span class="n">09</span><a href="#s9">Public API</a></li>
+      <li><span class="n">10</span><a href="#s10">Validation</a></li>
+      <li><span class="n">11</span><a href="#s11">Security</a></li>
+      <li><span class="n">12</span><a href="#s12">Observability &amp; testing</a></li>
+      <li><span class="n">13</span><a href="#s13">Local stack</a></li>
+      <li><span class="n">14</span><a href="#s14">Roadmap</a></li>
+      <li><span class="n">15</span><a href="#s15">Open questions</a></li>
+      <li><span class="n">&nbsp;A</span><a href="#sa">What this looks like in code</a></li>
+    </ol>
+  </nav>
+
+  <section id="s1">
+    <h2><span class="num">01</span><span>Summary</span></h2>
+    <p>The service accepts a file, converts it to another format asynchronously, and delivers the result. The gateway creates a job and issues a presigned URL, the client uploads the file straight to storage, a command goes onto a queue, and the worker for that format family picks it up.</p>
+    <p>Two decisions carry the whole structure:</p>
+    <ol class="body-list">
+      <li><strong>HTTP requests never convert.</strong> That lets a heavy file and a slow engine coexist without holding a connection open, and it is what gives the microservice split a real reason to exist rather than a decorative one.</li>
+      <li><strong>The gateway owns the jobs; workers have no database.</strong> A worker is a pure compute step: take a command, download, convert, upload, report an event. That is why there can be two converters, or three, or five, without the data model changing.</li>
+    </ol>
+  </section>
+
+  <section id="s2">
+    <h2><span class="num">02</span><span>Service decomposition</span></h2>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Service</th><th>Responsibility</th><th>Owns</th><th>Scales with</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="svc">api-gateway</td>
+            <td>The only REST surface. Verifies JWTs locally, issues presigned URLs, and <strong>owns the conversion jobs</strong>: creates them, consumes worker results, writes status. Rate limiting, quotas, OpenAPI.</td>
+            <td><code>gateway</code></td>
+            <td>HTTP concurrency</td>
+          </tr>
+          <tr>
+            <td class="svc">identity-service</td>
+            <td>Registration, login, JWT issue and refresh, email verification, password reset, profile.</td>
+            <td><code>identity</code></td>
+            <td>low</td>
+          </tr>
+          <tr>
+            <td class="svc">image-service</td>
+            <td>Image conversion on <code>sharp</code>. Stateless, N replicas, a light image with no external binaries.</td>
+            <td>&mdash;</td>
+            <td><strong>CPU</strong></td>
+          </tr>
+          <tr>
+            <td class="svc">data-service</td>
+            <td>Structured-data conversion: csv, json, xml, yaml &mdash; all 12 directions. Stateless, N replicas, pure Node.</td>
+            <td>&mdash;</td>
+            <td><strong>CPU</strong></td>
+          </tr>
+          <tr>
+            <td class="svc">notification-service</td>
+            <td>Notification delivery: holds the browsers' SSE connections and pushes job status, keeps the history, sends auth mail over SMTP.</td>
+            <td><code>notification</code></td>
+            <td>live connections</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><em>On the name.</em> In discussion the second converter was called "the text service". Here it is <code>data-service</code>, because it handles structured text formats rather than documents: if <code>docx &rarr; pdf</code> appears later, that is a third service with its own image and its own queue, not an extension of this one.</p>
+
+    <h3>Why the boundary falls here</h3>
+    <ul>
+      <li><strong>Between the converters, the split is by image weight, not by domain.</strong> <code>image-service</code> carries only <code>sharp</code>, so its image stays light. Any heavyweight engine added later (LibreOffice, ffmpeg) brings hundreds of megabytes &mdash; and brings them to <em>its own</em> service, leaving the others untouched. A forty-minute video must not block a 200&nbsp;ms thumbnail resize, and separate queues on separate deployments are the only way to guarantee that.</li>
+      <li><strong>Auth is split out</strong> to keep the gateway free of user-table coupling and to give a clean example of a synchronous call over the broker.</li>
+      <li><strong>Notifications are split out</strong> because a live SSE connection costs memory and a connection slot, not CPU. A thousand waiting tabs and a thousand REST requests per second load a process in completely different ways, and the two must scale independently.</li>
+    </ul>
+
+    <div class="rec">
+      <span class="tag">The key consequence</span>
+      <p>With more than one converter, a job cannot have two owners: the user's job list must be <strong>one paginated query</strong>, not a merge across sources. So <code>conversion_jobs</code> lives in the gateway's database and the workers never touch a database at all. Adding a third converter requires no migration.</p>
+    </div>
+
+    <figure>
+      <div class="diagram">
+        <svg viewBox="0 0 980 420" role="img" aria-labelledby="diagtitle">
+          <title id="diagtitle">Request, message and byte flow between five services, the broker and object storage</title>
+          <defs>
+            <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)"></path>
+            </marker>
+            <marker id="ar-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--muted)"></path>
+            </marker>
+          </defs>
+
+          <!-- bytes: client straight to storage and back -->
+          <path class="e-cmd" d="M 70 176 C 220 30, 660 18, 884 124" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+          <text class="e-lr" x="450" y="22" text-anchor="middle">bytes: PUT the source, GET the result &mdash; direct, never through Node</text>
+
+          <!-- client -->
+          <rect class="n-box" x="16" y="180" width="104" height="52" rx="5"></rect>
+          <text class="n-t" x="68" y="211" text-anchor="middle">Client</text>
+
+          <path class="e-cmd" d="M 124 206 L 164 206" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+          <text class="e-l" x="144" y="158" text-anchor="middle">HTTPS &middot; presigned URL</text>
+
+          <!-- gateway -->
+          <rect class="n-key" x="168" y="168" width="156" height="58" rx="5"></rect>
+          <text class="n-t" x="246" y="190" text-anchor="middle">api-gateway</text>
+          <text class="n-s" x="246" y="207" text-anchor="middle">REST &middot; local JWT &middot; presigning</text>
+          <rect class="n-db" x="184" y="234" width="124" height="20" rx="3"></rect>
+          <text class="n-dbt" x="246" y="248" text-anchor="middle">gateway DB &middot; jobs</text>
+
+          <!-- command out, results back -->
+          <path class="e-cmd" d="M 326 196 L 388 196" marker-end="url(#ar-a)"></path>
+          <text class="e-la" x="357" y="158" text-anchor="middle">conversion.requested</text>
+          <path class="e-evt" d="M 388 216 L 328 216" marker-end="url(#ar-m)"></path>
+          <text class="e-l" x="357" y="236" text-anchor="middle">result.*</text>
+
+          <!-- broker -->
+          <rect class="n-mq" x="392" y="166" width="136" height="76" rx="5"></rect>
+          <text class="n-t" x="460" y="194" text-anchor="middle">RabbitMQ</text>
+          <text class="n-s" x="460" y="211" text-anchor="middle">commands &middot; results</text>
+          <text class="n-s" x="460" y="226" text-anchor="middle">events &middot; DLX &middot; quorum</text>
+
+          <!-- commands to the workers -->
+          <path class="e-cmd" d="M 530 182 L 560 182 L 560 122 L 592 122" marker-end="url(#ar-a)"></path>
+          <text class="e-la" x="596" y="88">convert.image</text>
+          <path class="e-cmd" d="M 530 198 L 592 198" marker-end="url(#ar-a)"></path>
+          <text class="e-la" x="596" y="164">convert.data</text>
+
+          <!-- results back -->
+          <path class="e-evt" d="M 592 134 L 578 134 L 578 172 L 532 172" marker-end="url(#ar-m)"></path>
+          <path class="e-evt" d="M 592 212 L 532 212" marker-end="url(#ar-m)"></path>
+          <text class="e-l" x="534" y="232">result.completed / failed</text>
+
+          <!-- workers -->
+          <rect class="n-key" x="596" y="96" width="172" height="52" rx="5"></rect>
+          <text class="n-t" x="682" y="118" text-anchor="middle">image-service</text>
+          <text class="n-s" x="682" y="134" text-anchor="middle">sharp &middot; &times;N &middot; no database</text>
+
+          <rect class="n-key" x="596" y="172" width="172" height="52" rx="5"></rect>
+          <text class="n-t" x="682" y="194" text-anchor="middle">data-service</text>
+          <text class="n-s" x="682" y="210" text-anchor="middle">csv/json/xml/yaml &middot; no database</text>
+
+          <!-- workers read and write storage -->
+          <path class="e-cmd" d="M 770 122 L 816 140" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+          <path class="e-cmd" d="M 770 198 L 816 176" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+          <rect class="n-box" x="820" y="130" width="140" height="56" rx="5"></rect>
+          <text class="n-t" x="890" y="152" text-anchor="middle">MinIO / S3</text>
+          <text class="n-s" x="890" y="168" text-anchor="middle">private buckets</text>
+          <text class="e-l" x="890" y="202" text-anchor="middle">source / result</text>
+
+          <!-- identity: request/response over the broker -->
+          <path class="e-cmd" d="M 460 244 L 460 296" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+          <text class="e-l" x="450" y="268" text-anchor="end">login / refresh</text>
+          <text class="e-l" x="450" y="282" text-anchor="end">&mdash; rare, not per request</text>
+          <rect class="n-box" x="392" y="300" width="136" height="46" rx="5"></rect>
+          <text class="n-t" x="460" y="328" text-anchor="middle">identity-service</text>
+          <rect class="n-db" x="414" y="352" width="92" height="20" rx="3"></rect>
+          <text class="n-dbt" x="460" y="366" text-anchor="middle">identity DB</text>
+
+          <!-- events to notifications -->
+          <path class="e-evt" d="M 505 244 L 505 270 L 682 270 L 682 296" marker-end="url(#ar-m)"></path>
+          <text class="e-la" x="570" y="264" text-anchor="middle">domain.events</text>
+          <rect class="n-key" x="596" y="300" width="172" height="52" rx="5"></rect>
+          <text class="n-t" x="682" y="322" text-anchor="middle">notification-service</text>
+          <text class="n-s" x="682" y="338" text-anchor="middle">SSE &middot; history &middot; mail</text>
+          <rect class="n-db" x="614" y="358" width="136" height="20" rx="3"></rect>
+          <text class="n-dbt" x="682" y="372" text-anchor="middle">notification DB</text>
+
+          <path class="e-out" d="M 770 326 L 816 326" marker-end="url(#ar-m)"></path>
+          <rect class="n-box" x="820" y="300" width="140" height="52" rx="5"></rect>
+          <text class="n-t" x="890" y="322" text-anchor="middle">SMTP</text>
+          <text class="n-s" x="890" y="338" text-anchor="middle">auth mail only</text>
+
+          <!-- SSE back to the browser -->
+          <path class="e-evt" d="M 596 340 L 570 340 L 570 400 L 40 400 L 40 234" marker-end="url(#ar-m)"></path>
+          <text class="e-l" x="300" y="393" text-anchor="middle">SSE &mdash; job status into the browser</text>
+        </svg>
+      </div>
+      <figcaption>Solid teal &mdash; commands and synchronous calls; dashed &mdash; results, events and live connections. The top arc is the path of the bytes themselves: the client uploads the source and fetches the result straight from storage. The bottom arc is SSE. The client has <strong>two public entry points</strong>: short REST calls go to the gateway, the long-lived status connection to notification-service. Note what the diagram shows: the workers have no database, and the gateway does.</figcaption>
+    </figure>
+  </section>
+
+  <section id="s3">
+    <h2><span class="num">03</span><span>Repository layout</span></h2>
+    <p>Nest monorepo mode, in the current repository. The existing <code>src/core/*</code> modules move to <code>libs/core</code> and are imported by every app unchanged.</p>
+
+<pre><code>apps/
+  api-gateway/            <span class="c">// REST + owner of the jobs</span>
+  identity-service/       <span class="c">// RMQ handlers, request/response</span>
+  image-service/          <span class="c">// RMQ consumer, sharp</span>
+  data-service/           <span class="c">// RMQ consumer, csv/json/xml/yaml</span>
+  notification-service/   <span class="c">// SSE + history + SMTP</span>
+libs/
+  core/                   <span class="c">// config, database, health, throttler (moved from src/core)</span>
+  contracts/              <span class="c">// messages, payloads, schemas, error codes, format matrix</span>
+  worker-kit/             <span class="c">// SHARED worker core: download → verify → convert → upload</span>
+  storage/                <span class="c">// S3 client: put, get stream, presign, delete</span>
+  observability/          <span class="c">// pino logger, correlation-id, metrics</span></code></pre>
+
+    <div class="rec">
+      <span class="tag">Why worker-kit is mandatory</span>
+      <p>Both converters do the same thing: download from S3, verify the signature, convert, upload the result, report an event, clean up the temp directory. <strong>Only the converter registry differs.</strong> Without a shared library you end up with two nearly identical services &mdash; the first thing a reviewer will pick on. With it, <code>image-service</code> and <code>data-service</code> are thin shells: their own providers and a queue name.</p>
+    </div>
+
+    <h3>Migration steps from the current boilerplate</h3>
+    <ol class="body-list">
+      <li><code>nest-cli.json</code> &rarr; monorepo mode, <code>projects</code> entries for five apps and five libs.</li>
+      <li><code>git mv src/core libs/core</code>; the <code>src/modules/*</code> stubs move into their owning apps.</li>
+      <li><code>tsconfig.json</code> paths: <code>@core/*</code>, <code>@contracts/*</code>, <code>@worker-kit/*</code>, <code>@storage/*</code>.</li>
+      <li>Split <code>main.ts</code>: the gateway keeps today's Fastify bootstrap (compression, cookies, CORS, validation pipe, transactional context); workers use <code>NestFactory.createMicroservice</code> with <code>Transport.RMQ</code> plus a minimal HTTP listener for <code>/health</code>.</li>
+      <li>The <code>Config</code> interface is extended per app: a worker needs neither SMTP credentials nor a database URL &mdash; only RabbitMQ and S3.</li>
+      <li>Only three apps have migrations at all: gateway, identity, notification.</li>
+    </ol>
+  </section>
+
+  <section id="s4">
+    <h2><span class="num">04</span><span>Messaging design</span></h2>
+    <p>Transport is <code>@nestjs/microservices</code> over RabbitMQ. Three exchanges, with distinct roles.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Exchange</th><th>Type</th><th>Routing key</th><th>Queue</th><th>Consumer</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>conversion.commands</code></td><td>direct</td>
+            <td><code>convert.image</code><br><code>convert.data</code></td>
+            <td><code>conversion.jobs.image</code><br><code>conversion.jobs.data</code></td>
+            <td class="svc">image-service<br>data-service</td>
+          </tr>
+          <tr>
+            <td><code>conversion.results</code></td><td>direct</td>
+            <td><code>result.completed</code><br><code>result.failed</code></td>
+            <td><code>gateway.results</code></td>
+            <td class="svc">api-gateway</td>
+          </tr>
+          <tr>
+            <td><code>domain.events</code></td><td>topic</td>
+            <td><code>conversion.*</code>, <code>user.*</code></td>
+            <td><code>notifications.mail</code><br><code>notifications.sse.&lt;instance&gt;</code></td>
+            <td class="svc">notification-service</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Why the result goes through the gateway rather than straight to the user</h3>
+    <p>A worker publishes <code>result.completed</code>, which is an <strong>internal</strong> fact: "the file is converted, the result is at this key." The gateway applies it to its table and only after the commit publishes the <strong>public</strong> <code>conversion.completed</code> onto <code>domain.events</code>, where notification-service picks it up and pushes it to the browser.</p>
+    <p>The extra hop pays for itself. If SSE were pushed directly from the worker's event, the user would get "done", request the download link, and sometimes receive <code>409 NOT_READY</code> because the gateway had not applied the result yet. That race simply does not exist when the public event is emitted by whoever owns the state.</p>
+
+    <h3>One subscriber, two queues</h3>
+    <p>notification-service binds to <code>domain.events</code> twice, and the queues are fundamentally different &mdash; confusing them means either sending one email per replica, or never delivering status to the browser:</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Queue</th><th>Kind</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>notifications.mail</code></td>
+            <td>shared, durable, competing consumers</td>
+            <td>The email must go out <strong>exactly once</strong>, however many replicas run.</td>
+          </tr>
+          <tr>
+            <td><code>notifications.sse.&lt;instance&gt;</code></td>
+            <td>exclusive, auto-delete, one per replica</td>
+            <td><strong>Every</strong> replica receives the event; only the one holding that user's connection pushes it. No sticky routing, no shared Redis.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Delivery guarantees</h3>
+    <ul>
+      <li><strong>One job at a time per worker.</strong> <code>noAck: false</code>, manual ack, <code>prefetchCount: 1</code>. A crash redelivers exactly one job, and load spreads by real capacity rather than round-robin.</li>
+      <li><strong>Durable quorum queues</strong>, persistent messages, publisher confirms.</li>
+      <li><strong>Retry with backoff.</strong> A retryable failure nacks without requeue and dead-letters into <code>conversion.retry.&lt;n&gt;</code> &mdash; a queue with <code>x-message-ttl</code> and a DLX back to the work queue. Three attempts at 10&nbsp;s / 60&nbsp;s / 300&nbsp;s, then <code>conversion.jobs.dlq</code> and <code>FAILED</code>.</li>
+      <li><strong>Idempotency.</strong> The job id is the message id. A worker with no database cannot check status, so deduplication lives in the gateway: a repeated <code>result.completed</code> for an already terminal job is a no-op. Re-running the conversion itself is harmless &mdash; the result overwrites the same key.</li>
+      <li><strong>Transactional outbox</strong> in gateway and identity: the state row and the outbox row are written in one <code>@Transactional()</code> (already available through <code>typeorm-transactional</code>), and a relay publishes them separately. Without it you eventually get a job no worker hears about, or an event for a transaction that rolled back.</li>
+      <li><code>correlationId</code> travels in message headers and is logged by every service.</li>
+    </ul>
+  </section>
+
+  <section id="s5">
+    <h2><span class="num">05</span><span>The conversion pipeline</span></h2>
+
+    <h3>Job state machine</h3>
+    <div class="flow">
+      <span class="chip">PENDING</span><span class="arr">&rarr;</span>
+      <span class="chip">QUEUED</span><span class="arr">&rarr;</span>
+      <span class="chip">PROCESSING</span><span class="arr">&rarr;</span>
+      <span class="chip ok">COMPLETED</span><span class="arr">&rarr;</span>
+      <span class="chip">EXPIRED</span>
+    </div>
+    <div class="flow">
+      <span class="arr">&#8627;</span>
+      <span class="chip">RETRYING</span><span class="arr">&#8617; PROCESSING</span>
+      <span class="arr">&middot;</span>
+      <span class="chip bad">FAILED</span>
+      <span class="arr">&middot;</span>
+      <span class="chip">CANCELLED</span>
+      <span class="arr txt">&larr; from PENDING or QUEUED</span>
+    </div>
+    <p><strong>Every transition is written by the gateway</strong> &mdash; either from its own HTTP handler or by applying a worker result. Each one appends to <code>job_events</code>: that trail answers "why did this job take four minutes" without digging through logs.</p>
+
+    <h3>Worker algorithm</h3>
+    <p>Identical for both converters; it lives in <code>libs/worker-kit</code>:</p>
+    <ol class="body-list">
+      <li>Receive the command. It carries everything needed: <code>jobId</code>, <code>sourceKey</code>, <code>sourceFormat</code>, <code>targetFormat</code>, <code>options</code>, <code>resultKey</code>. There is no database to consult, and none to consult it in.</li>
+      <li>Stream the source object from S3 into the job's temp directory.</li>
+      <li><strong>Re-verify the real file type by its signature</strong>, not by the extension or the client's <code>Content-Type</code>. A mismatch is <code>INVALID_SOURCE</code>, with no retry.</li>
+      <li>Resolve a converter from the registry; no match is <code>UNSUPPORTED_CONVERSION</code>, with no retry.</li>
+      <li>Run it under a hard timeout and a memory ceiling.</li>
+      <li>Stream the result to S3 at the key from the command; record size and checksum.</li>
+      <li>Publish <code>result.completed</code> and ack; delete the temp directory in a <code>finally</code>.</li>
+    </ol>
+    <p>Failures are classified <strong>retryable</strong> (storage timeout, OOM, worker killed) against <strong>permanent</strong> (corrupt input, unsupported pair, too large). Permanent failures never burn three retries.</p>
+
+    <h3>The converter registry</h3>
+    <p>Every engine implements one interface and self-registers. The matrix served at <code>GET /formats</code> is derived from the registry &mdash; adding a format is one provider and zero changes elsewhere.</p>
+
+<pre><code>export interface Converter {
+  readonly id: string;              <span class="c">// 'sharp-image', 'data-canonical'</span>
+  supports(source: Format, target: Format): boolean;
+  capabilities(): ConversionPair[]; <span class="c">// feeds GET /formats</span>
+  convert(input: ConversionInput, ctx: ConversionContext): Promise&lt;ConversionResult&gt;;
+}</code></pre>
+
+    <p><code>ConversionContext</code> carries the temp directory, an <code>AbortSignal</code> for the timeout, a progress callback and the logger already bound to the correlation id. The format family is no longer part of the interface: it is decided by whichever service loaded the registry.</p>
+  </section>
+
+  <section id="s6">
+    <h2><span class="num">06</span><span>Data conversion</span></h2>
+
+    <p>Twelve directions are required between four formats. <strong>Not twelve converters.</strong> csv, json, xml and yaml are different representations of the same structure, so the right decomposition is a different one:</p>
+
+    <div class="flow">
+      <span class="chip">csv</span>
+      <span class="chip">json</span>
+      <span class="chip">xml</span>
+      <span class="chip">yaml</span>
+      <span class="arr">&rarr; parse &rarr;</span>
+      <span class="chip ok">canonical model</span>
+      <span class="arr">&rarr; serialize &rarr;</span>
+      <span class="chip">csv</span>
+      <span class="chip">json</span>
+      <span class="chip">xml</span>
+      <span class="chip">yaml</span>
+    </div>
+
+    <p><strong>Four parsers and four serializers &mdash; eight pieces of code cover all twelve directions.</strong> A fifth format (toml, say) adds eight new directions for the price of two new pieces rather than eight. It also tests separately: a parser is checked for reading correctly, a serializer for writing correctly, with no combinatorial explosion of pairs.</p>
+
+    <div class="scroll">
+      <table class="matrix">
+        <thead><tr><th>from \ to</th><th>csv</th><th>json</th><th>xml</th><th>yaml</th></tr></thead>
+        <tbody>
+          <tr><td>csv</td><td class="no">&mdash;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td></tr>
+          <tr><td>json</td><td class="yes">&#10003;*</td><td class="no">&mdash;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td></tr>
+          <tr><td>xml</td><td class="yes">&#10003;*</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="yes">&#10003;</td></tr>
+          <tr><td>yaml</td><td class="yes">&#10003;*</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>The asterisk: not every tree fits in a table</h3>
+    <p>This is the main trap, and it is worth settling before any code is written. csv is a flat table; json, xml and yaml are trees. Going towards a tree is trivial; coming back is not:</p>
+
+<pre><code><span class="c">// Fits in CSV: an array of flat objects</span>
+[{ "id": 1, "name": "Anna" }, { "id": 2, "name": "Boris" }]
+
+<span class="c">// Does not fit: nesting and heterogeneous keys</span>
+{ "user": { "name": "Anna", "tags": ["a", "b"] } }</code></pre>
+
+    <p>The behaviour is a conversion option, declared in the contract:</p>
+    <ul>
+      <li><code>flatten: false</code> (default) &mdash; a document that is not an array of flat objects is rejected with <code>NOT_TABULAR</code>. This is a <strong>permanent</strong> failure: retrying is pointless, and the user gets a clear reason instead of a broken CSV.</li>
+      <li><code>flatten: true</code> &mdash; nesting is expanded into dotted keys (<code>user.name</code>, <code>user.tags.0</code>), columns are the union across records, gaps are empty.</li>
+    </ul>
+
+    <h3>XML specifics</h3>
+    <p>xml has no single canonical mapping onto json, so the conventions are pinned in options and never change silently: <code>rootName</code> (root element, default <code>root</code>), <code>itemName</code> (element for array entries, default <code>item</code>), <code>attributePrefix</code> (attributes as keys prefixed with <code>@</code>), <code>textKey</code> (text content of a mixed node, default <code>#text</code>). Without those rules <code>xml &rarr; json &rarr; xml</code> will not return the original document, and that is the first thing a round-trip test checks.</p>
+
+    <div class="rec">
+      <span class="tag">What to test</span>
+      <p><strong>Round-trips on every pair where one is meaningful:</strong> <code>json &rarr; yaml &rarr; json</code> and <code>json &rarr; xml &rarr; json</code> must reproduce the original. Plus a set of hostile fixtures: csv with commas and newlines inside quotes, xml with attributes and mixed content, yaml with anchors and block scalars, json nested fifty levels deep, an empty file, a file containing only a BOM.</p>
+    </div>
+
+    <h3>Streaming</h3>
+    <p>The canonical model does not fit in memory for large files, so parsers and serializers work record-by-record wherever the format allows: csv (line by line) and json arrays (through a streaming parser). yaml and xml are parsed whole, so their input size limit is lower, and that is reflected in the quotas. For the expected volume (files up to a hundred megabytes) this is enough; if more is needed later, only the parsers change, not the contract.</p>
+  </section>
+
+  <section id="s7">
+    <h2><span class="num">07</span><span>Storage</span></h2>
+    <ul>
+      <li>Two private buckets, <code>uploads/</code> and <code>results/</code>. <strong>No object is ever publicly readable.</strong></li>
+      <li>Keys are <code>&lt;bucket&gt;/&lt;userId&gt;/&lt;jobId&gt;</code>: the user id in the path makes ownership checks cheap and cross-user access structurally impossible.</li>
+      <li>The result key is computed by the gateway and passed in the command &mdash; a worker never invents names and cannot write to the wrong place.</li>
+      <li>Lifecycle: the source is deleted after a successful conversion, the result at <code>expires_at</code> (24&nbsp;h by default) by a scheduled job in the gateway that also marks the rows <code>EXPIRED</code>.</li>
+    </ul>
+
+    <p><strong>Upload path &mdash; presigned <code>PUT</code>, in three steps.</strong> The bytes never pass through Node:</p>
+    <ol class="body-list">
+      <li><code>POST /conversions</code> &mdash; the gateway creates the job as <code>PENDING</code> and returns the <code>jobId</code> with a presigned <code>PUT</code> URL that already pins the object key, the content type and a <strong>size ceiling</strong>.</li>
+      <li>The client uploads the file <strong>straight to MinIO</strong> with that URL.</li>
+      <li><code>POST /conversions/:id/uploaded</code> &mdash; the gateway does a <code>headObject</code>, confirms the object exists and is within the limit, moves the job to <code>QUEUED</code> and publishes the command.</li>
+    </ol>
+    <p>Download is symmetric: a <code>302</code> to a presigned <code>GET</code> valid about five minutes, after the <code>job.user_id</code> check. Node signs URLs and proxies nothing, so file size stops affecting memory and HTTP connection lifetimes.</p>
+  </section>
+
+  <section id="s8">
+    <h2><span class="num">08</span><span>Data model</span></h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Database</th><th>Tables</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="svc">gateway</td>
+            <td><code>conversion_jobs</code> (id, user_id, status, source_format, target_format, options jsonb, source_key, source_size, result_key, result_size, checksum, error_code, error_message, attempts, started_at, finished_at, expires_at, timestamps) &middot; <code>job_events</code> &middot; <code>outbox</code> &middot; <code>quotas</code></td>
+          </tr>
+          <tr>
+            <td class="svc">identity</td>
+            <td><code>users</code> (id, email unique citext, password_hash, role, email_verified_at, timestamps) &middot; <code>refresh_tokens</code> (user_id, token_hash, expires_at, revoked_at, user_agent, ip) &middot; <code>verification_tokens</code> &middot; <code>outbox</code></td>
+          </tr>
+          <tr>
+            <td class="svc">notification</td>
+            <td><code>notifications</code> (user_id, type, channel, status, payload jsonb, ref_id, read_at, attempts, sent_at, error) with an idempotency key on (user_id, type, ref_id)</td>
+          </tr>
+          <tr>
+            <td class="svc">image-service<br>data-service</td>
+            <td><strong>no database</strong> &mdash; everything needed arrives in the command</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Indexes that earn their keep: <code>conversion_jobs (user_id, created_at DESC)</code> for the list endpoint, <code>(status, expires_at)</code> for the cleanup job, and a partial index on non-terminal statuses for queue-depth metrics. Token tables store hashes, never raw tokens.</p>
+  </section>
+
+  <section id="s9">
+    <h2><span class="num">09</span><span>Public API</span></h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="svc">POST</td><td><code>/auth/register</code></td><td>emits <code>user.registered</code> &rarr; verification mail</td></tr>
+          <tr><td class="svc">POST</td><td><code>/auth/login</code></td><td>access JWT in the body, refresh token in an httpOnly cookie</td></tr>
+          <tr><td class="svc">POST</td><td><code>/auth/refresh</code> &middot; <code>/auth/logout</code></td><td>rotation and revocation</td></tr>
+          <tr><td class="svc">POST</td><td><code>/auth/verify-email</code> &middot; <code>/auth/forgot-password</code> &middot; <code>/auth/reset-password</code></td><td></td></tr>
+          <tr><td class="svc">GET&nbsp;/&nbsp;PATCH</td><td><code>/users/me</code></td><td></td></tr>
+          <tr><td class="svc">GET</td><td><code>/formats</code></td><td>conversion matrix: 12 data directions plus images</td></tr>
+          <tr><td class="svc">POST</td><td><code>/conversions</code></td><td><code>targetFormat</code> + options &rarr; <strong>201</strong> <code>{ jobId, uploadUrl, expiresIn }</code></td></tr>
+          <tr><td class="svc">POST</td><td><code>/conversions/:id/uploaded</code></td><td>file uploaded &rarr; <code>headObject</code>, <code>QUEUED</code>, publish the command &rarr; <strong>202</strong></td></tr>
+          <tr><td class="svc">GET</td><td><code>/conversions</code></td><td>own jobs, paginated, filterable &mdash; <strong>one query against one table</strong></td></tr>
+          <tr><td class="svc">GET</td><td><code>/conversions/:id</code></td><td>status, progress, error</td></tr>
+          <tr><td class="svc">GET</td><td><code>/conversions/:id/download</code></td><td><code>302</code> to a presigned URL</td></tr>
+          <tr><td class="svc">DELETE</td><td><code>/conversions/:id</code></td><td>cancel if queued, delete artifacts if finished</td></tr>
+          <tr><td class="svc">GET</td><td><code>/health</code> &middot; <code>/docs</code></td><td>liveness and readiness + Swagger</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Errors use one envelope &mdash; <code>code</code>, <code>message</code>, <code>details</code>, <code>correlationId</code> &mdash; from a global exception filter, so clients branch on a stable code rather than on prose. Conversion codes: <code>UNSUPPORTED_CONVERSION</code>, <code>INVALID_SOURCE</code>, <code>NOT_TABULAR</code>, <code>FILE_TOO_LARGE</code>, <code>CONVERSION_TIMEOUT</code>.</p>
+
+    <h3>The second edge: notification-service</h3>
+    <p>The live connection does not pass through the gateway &mdash; that would hold it open on both services at once and pay for the memory twice. At the ingress it is a separate route (or an <code>events.</code> subdomain), and the JWT is verified with the same public key.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="svc">GET</td><td><code>/events</code></td><td>SSE stream of this user's events: job status changes</td></tr>
+          <tr><td class="svc">GET</td><td><code>/notifications</code></td><td>history &mdash; what happened while the tab was closed</td></tr>
+          <tr><td class="svc">POST</td><td><code>/notifications/read</code></td><td>mark as read</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="s10">
+    <h2><span class="num">10</span><span>Validation</span></h2>
+    <p>The brief allows zod or Joi; the boilerplate already wires Joi (for env) and <code>ValidationPipe</code>.</p>
+    <div class="rec">
+      <span class="tag">Recommendation</span>
+      <p><code>nestjs-zod</code> for HTTP DTOs and message payloads, with Joi kept for env validation. One schema in <code>libs/contracts</code> does three jobs: the compile-time type, the guard at the HTTP edge, and the guard at the consumer &mdash; the last matters because a message from another service is exactly as untrusted as a request from a browser. It also generates the OpenAPI schema, so documentation cannot drift from validation.</p>
+    </div>
+    <p>The <strong>conversion options</strong> are validated separately: <code>flatten</code>, <code>delimiter</code>, <code>rootName</code>, <code>attributePrefix</code> and the rest. Their schema depends on the target format, so in the contract this is a discriminated union on <code>targetFormat</code> &mdash; which means you cannot send <code>rootName</code> for csv and have it silently ignored.</p>
+  </section>
+
+  <section id="s11">
+    <h2><span class="num">11</span><span>Security</span></h2>
+    <ul>
+      <li><strong>Credentials.</strong> argon2id for passwords. A short-lived access JWT (15 min) and a rotating refresh token in an httpOnly, <code>SameSite=Strict</code> cookie; reuse detection revokes the whole token family.</li>
+      <li><strong>Token verification is local.</strong> The gateway does not call identity-service per request: it verifies the JWT signature with its own key, zero network hops on the hot path. It reaches identity only for <code>register</code>, <code>login</code>, <code>refresh</code> and password reset.</li>
+      <li><strong>Authorization.</strong> Every job query is scoped by <code>user_id</code> at the repository level, not by a check a caller might forget. An <code>ADMIN</code> role covers the ops endpoints.</li>
+      <li><strong>File intake.</strong> Extension allow-list, signature verification, a hard size limit inside the signature itself, and the filename never becomes a storage key &mdash; the key is the job UUID.</li>
+      <li><strong>Parsing is an attack surface too.</strong> Each parser has its own holes: xml needs <strong>external entities disabled</strong> (XXE) and a depth limit, yaml needs a safe loader with no arbitrary tags, json needs a nesting limit. This is not theory &mdash; those three are exactly where format converters get broken.</li>
+      <li><strong>Worker isolation.</strong> Non-root, read-only root filesystem apart from the temp directory, dropped capabilities, no outbound network, CPU and memory limits, a per-job timeout.</li>
+      <li><strong>Rate limiting.</strong> <code>ThrottlerModule</code> globally plus a per-user quota on <code>POST /conversions</code>: N jobs per hour, M concurrent, enforced against the job table.</li>
+      <li>Secrets from env only; <code>.env.example</code> documents every key.</li>
+    </ul>
+  </section>
+
+  <section id="s12">
+    <h2><span class="num">12</span><span>Observability &amp; testing</span></h2>
+    <ul>
+      <li><code>pino</code> structured logs; the correlation id is generated at the edge and propagated through RMQ headers into every worker log line.</li>
+      <li>Liveness and readiness per service through Terminus. A worker's readiness checks the broker and storage &mdash; but not a database, which it does not have.</li>
+      <li>Prometheus metrics: depth of each queue separately, job duration by format pair, failure rate by error code, retries. Queue depth is the autoscaling signal, and there are now two of them.</li>
+      <li>Graceful shutdown: stop consuming, finish the in-flight job, exit.</li>
+      <li><strong>Tests.</strong> Parsers and serializers get unit tests on fixtures &mdash; cheap, and they cover the bulk of the logic. Round-trip tests on the meaningful pairs. Integration tests per service on Testcontainers (Postgres + RabbitMQ + MinIO). One end-to-end: upload a real csv and wait for correct json on download.</li>
+      <li>CI runs lint, unit, e2e and a <code>docker build</code> per app on every pull request.</li>
+    </ul>
+  </section>
+
+  <section id="s13">
+    <h2><span class="num">13</span><span>Local stack</span></h2>
+    <p>One <code>docker compose up</code> brings up PostgreSQL (three databases via an init script &mdash; gateway, identity, notification), RabbitMQ with the management UI, MinIO with an <code>mc</code> init container, Mailhog to catch all development mail (no turboSMTP account needed to work), and the five services. Both converters scale through <code>--scale</code> independently of one another &mdash; the most direct way to show a reviewer why they were split.</p>
+  </section>
+
+  <section id="s14">
+    <h2><span class="num">14</span><span>Roadmap</span></h2>
+    <ol class="phases">
+      <li><span class="ph">Phase 0</span><p>Monorepo conversion, libs extracted, compose stack, health checks green across five services.</p></li>
+      <li><span class="ph">Phase 1</span><p>identity-service and gateway auth: register, login, refresh, verify; the RPC contract; e2e.</p></li>
+      <li><span class="ph">Phase 2</span><p><strong>Happy path through data-service:</strong> job → presigned upload → queue → csv&nbsp;→&nbsp;json → result → download. The cheapest way to exercise the whole pipeline, because it needs no binaries and no heavy fixtures.</p></li>
+      <li><span class="ph">Phase 3</span><p>The other eleven directions: four parsers, four serializers, the canonical model, <code>flatten</code>, the xml conventions, round-trip tests.</p></li>
+      <li><span class="ph">Phase 4</span><p><code>worker-kit</code> is extracted from data-service, and <code>image-service</code> is built on it with its own queue and its own image &mdash; proof that the split is real.</p></li>
+      <li><span class="ph">Phase 5</span><p>Reliability: retries and DLQ, outbox, idempotency, cancellation, TTL cleanup.</p></li>
+      <li><span class="ph">Phase 6</span><p>notification-service: SSE, history, auth mail.</p></li>
+      <li><span class="ph">Phase 7</span><p>Hardening: quotas, metrics, Testcontainers, CI, README and Swagger.</p></li>
+    </ol>
+    <p>The order is deliberate: <code>data-service</code> comes first precisely because it is the lightest &mdash; the transport, the storage and the job model are all proven against a conversion you can write in an evening. By the time <code>image-service</code> appears, there is nothing left to get wrong.</p>
+  </section>
+
+  <section id="s15" class="open">
+    <h2><span class="num">15</span><span>Open questions</span></h2>
+    <ol>
+      <li><strong>Which image directions?</strong> The data side is fixed; images are not. Proposal: png, jpeg, webp, avif, tiff in all directions plus resize as an option &mdash; on <code>sharp</code> that is as much work as a single direction.</li>
+      <li>Maximum file size and result retention &mdash; 100&nbsp;MB and 24&nbsp;h are placeholders. yaml and xml need a lower limit: they are parsed whole into memory.</li>
+      <li>Default <code>flatten</code> behaviour: reject a non-tabular document, or expand it with dotted keys? The document currently says reject.</li>
+      <li>Must a user verify their email before converting?</li>
+      <li>Is an admin surface in scope &mdash; all jobs, requeue, statistics?</li>
+      <li>Expected load target: it decides whether quorum queues and the outbox are necessary or gold-plating.</li>
+    </ol>
+  </section>
+
+  <section id="sa">
+    <h2><span class="num">A</span><span>What this looks like in code</span></h2>
+    <p>Skeletons of the load-bearing places. Error handling and logging are trimmed; the rest is real.</p>
+
+    <h3>1. The gateway verifies the token itself</h3>
+<pre><code><span class="c">// apps/api-gateway/src/modules/auth/jwt.strategy.ts</span>
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor(config: ConfigService) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      secretOrKey: config.get('JWT_PUBLIC_KEY'),
+      algorithms: ['RS256'],
+    });
+  }
+
+  <span class="c">// No network call: the signature is verified locally.</span>
+  validate(payload: JwtPayload): AuthUser {
+    return { id: payload.sub, role: payload.role };
+  }
+}</code></pre>
+
+    <h3>2. The gateway creates the job and signs the upload</h3>
+<pre><code><span class="c">// apps/api-gateway/src/modules/conversions/conversions.service.ts</span>
+async create(userId: string, dto: CreateConversionDto) {
+  const job = await this.jobs.save(this.jobs.create({
+    userId,
+    status: JobStatus.PENDING,
+    sourceFormat: dto.sourceFormat,
+    targetFormat: dto.targetFormat,
+    options: dto.options,
+    sourceKey: `${userId}/${randomUUID()}`,
+    resultKey: `${userId}/${randomUUID()}.${dto.targetFormat}`,
+  }));
+
+  <span class="c">// The signature pins the key, the type and the size ceiling.</span>
+  const uploadUrl = await this.storage.presignPut({
+    bucket: Bucket.Uploads,
+    key: job.sourceKey,
+    contentType: dto.contentType,
+    maxBytes: limitFor(dto.sourceFormat),   <span class="c">// lower for yaml and xml</span>
+    expiresIn: 900,
+  });
+
+  return { jobId: job.id, uploadUrl, expiresIn: 900 };
+}
+
+@Transactional()                        <span class="c">// job row and outbox row in one transaction</span>
+async confirmUpload(userId: string, jobId: string) {
+  const job = await this.jobs.findOneByOrFail({ id: jobId, userId });
+  if (job.status !== JobStatus.PENDING) return { status: job.status };
+
+  const head = await this.storage.head(Bucket.Uploads, job.sourceKey);
+  if (!head) throw new BadRequestException('SOURCE_NOT_UPLOADED');
+
+  job.status = JobStatus.QUEUED;
+  job.sourceSize = head.size;
+  await this.jobs.save(job);
+
+  <span class="c">// The family picks the queue — and this is the only place</span>
+  <span class="c">// that knows there is more than one converter.</span>
+  await this.outbox.save({
+    exchange: 'conversion.commands',
+    routingKey: `convert.${familyOf(job.targetFormat)}`,   <span class="c">// image | data</span>
+    payload: {
+      jobId: job.id,
+      sourceKey: job.sourceKey,
+      resultKey: job.resultKey,
+      sourceFormat: job.sourceFormat,
+      targetFormat: job.targetFormat,
+      options: job.options,
+    },
+  });
+
+  return { status: job.status };
+}</code></pre>
+
+    <h3>3. The gateway applies the result, then emits the public event</h3>
+<pre><code><span class="c">// apps/api-gateway/src/modules/conversions/results.consumer.ts</span>
+@EventPattern('result.completed')
+@Transactional()
+async onCompleted(@Payload() evt: ResultCompleted) {
+  const job = await this.jobs.findOneByOrFail({ id: evt.jobId });
+  if (isTerminal(job.status)) return;     <span class="c">// idempotency lives here</span>
+
+  job.status = JobStatus.COMPLETED;
+  job.resultSize = evt.size;
+  job.checksum = evt.checksum;
+  job.finishedAt = new Date();
+  await this.jobs.save(job);
+
+  <span class="c">// The public event is emitted AFTER the state is committed —</span>
+  <span class="c">// otherwise the client gets an SSE "done" before the link works.</span>
+  await this.outbox.save({
+    exchange: 'domain.events',
+    routingKey: 'conversion.completed',
+    payload: { jobId: job.id, userId: job.userId },
+  });
+
+  await this.storage.delete(Bucket.Uploads, job.sourceKey);   <span class="c">// source no longer needed</span>
+}</code></pre>
+
+    <h3>4. The worker: one core, different registries</h3>
+<pre><code><span class="c">// libs/worker-kit/src/conversion.handler.ts — one for both services</span>
+async handle(msg: ConversionRequested, ctx: RmqContext) {
+  const channel = ctx.getChannelRef();
+  const raw = ctx.getMessage();
+  const dir = await mkdtemp(join(tmpdir(), `job-${msg.jobId}-`));
+
+  try {
+    const source = join(dir, 'source');
+    await pipeline(
+      await this.storage.getStream(Bucket.Uploads, msg.sourceKey),
+      createWriteStream(source),
+    );
+
+    const real = await sniffFormat(source);          <span class="c">// by signature, not extension</span>
+    if (real !== msg.sourceFormat) throw new PermanentError('INVALID_SOURCE');
+
+    const converter = this.registry.resolve(msg.sourceFormat, msg.targetFormat);
+    if (!converter) throw new PermanentError('UNSUPPORTED_CONVERSION');
+
+    const out = await converter.convert(
+      { path: source, options: msg.options },
+      { dir, signal: AbortSignal.timeout(JOB_TIMEOUT_MS), logger: this.logger },
+    );
+
+    await this.storage.put(Bucket.Results, msg.resultKey, createReadStream(out.path));
+
+    <span class="c">// Not a single database query in the whole handler — there is no database.</span>
+    await this.publisher.emit('result.completed', {
+      jobId: msg.jobId, size: out.size, checksum: out.checksum,
+    });
+
+    channel.ack(raw);
+  } catch (err) {
+    await this.failures.handle(msg, err, channel, raw);   <span class="c">// permanent → result.failed, else → DLX</span>
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}</code></pre>
+
+<pre><code><span class="c">// apps/data-service/src/main.ts — the entire difference between the services</span>
+const app = await NestFactory.createMicroservice&lt;MicroserviceOptions&gt;(DataModule, {
+  transport: Transport.RMQ,
+  options: {
+    urls: [process.env.RABBITMQ_URL],
+    queue: 'conversion.jobs.data',       <span class="c">// image-service: conversion.jobs.image</span>
+    queueOptions: {
+      durable: true,
+      arguments: { 'x-queue-type': 'quorum', 'x-dead-letter-exchange': 'conversion.retry' },
+    },
+    noAck: false,
+    prefetchCount: 1,
+  },
+});</code></pre>
+
+    <h3>5. Twelve directions out of eight pieces</h3>
+<pre><code><span class="c">// apps/data-service/src/converters/data.converter.ts</span>
+export interface DataParser {
+  readonly format: DataFormat;
+  parse(input: Readable, opts: ParseOptions): Promise&lt;CanonicalDocument&gt;;
+}
+
+export interface DataSerializer {
+  readonly format: DataFormat;
+  serialize(doc: CanonicalDocument, opts: SerializeOptions): Readable;
+}
+
+@Injectable()
+export class DataConverter implements Converter {
+  readonly id = 'data-canonical';
+
+  constructor(
+    @Inject(PARSERS) private readonly parsers: DataParser[],
+    @Inject(SERIALIZERS) private readonly serializers: DataSerializer[],
+  ) {}
+
+  <span class="c">// The matrix is the cartesian product minus the identity pairs.</span>
+  <span class="c">// 4 + 4 providers give all 12 directions.</span>
+  capabilities(): ConversionPair[] {
+    return this.parsers.flatMap((p) =&gt;
+      this.serializers
+        .filter((s) =&gt; s.format !== p.format)
+        .map((s) =&gt; ({ from: p.format, to: s.format })),
+    );
+  }
+
+  async convert(input: ConversionInput, ctx: ConversionContext) {
+    const parser = this.parsers.find((p) =&gt; p.format === input.sourceFormat)!;
+    const serializer = this.serializers.find((s) =&gt; s.format === input.targetFormat)!;
+
+    const doc = await parser.parse(createReadStream(input.path), input.options);
+
+    <span class="c">// The one place where trees meet tables.</span>
+    if (serializer.format === DataFormat.Csv &amp;&amp; !doc.isTabular) {
+      if (!input.options.flatten) throw new PermanentError('NOT_TABULAR');
+      doc.flatten({ separator: '.' });
+    }
+
+    const out = join(ctx.dir, 'result');
+    await pipeline(serializer.serialize(doc, input.options), createWriteStream(out));
+    return { path: out, size: (await stat(out)).size };
+  }
+}</code></pre>
+    <p>Adding toml is a <code>TomlParser</code>, a <code>TomlSerializer</code> and two lines in the providers. Eight new directions appear in <code>GET /formats</code> on their own, because the matrix is computed rather than written by hand.</p>
+
+    <h3>6. notification-service and its two queues</h3>
+<pre><code><span class="c">// apps/notification-service/src/main.ts</span>
+const app = await NestFactory.create(NotificationModule);   <span class="c">// HTTP: holds the SSE connections</span>
+
+<span class="c">// (1) Mail — a shared durable queue: the email goes out ONCE.</span>
+app.connectMicroservice&lt;MicroserviceOptions&gt;({
+  transport: Transport.RMQ,
+  options: {
+    urls: [process.env.RABBITMQ_URL],
+    queue: 'notifications.mail',
+    queueOptions: { durable: true },
+    noAck: false,
+  },
+});
+
+<span class="c">// (2) SSE — its OWN exclusive queue per replica.</span>
+app.connectMicroservice&lt;MicroserviceOptions&gt;({
+  transport: Transport.RMQ,
+  options: {
+    urls: [process.env.RABBITMQ_URL],
+    queue: `notifications.sse.${process.env.HOSTNAME}`,
+    queueOptions: { durable: false, exclusive: true, autoDelete: true },
+  },
+});</code></pre>
+    <p><code>ConnectionHub</code> inside is just a <code>Map&lt;userId, Subject&gt;</code>. A replica holding no connection for that user quietly ignores the event, so neither sticky routing nor a shared Redis is needed.</p>
+  </section>
+
+  <footer>
+    <span>File Converter &mdash; architecture proposal</span>
+    <span>18 Sep 2026</span>
+    <span>NestJS 11 &middot; RabbitMQ &middot; PostgreSQL &middot; S3</span>
+  </footer>
+
+</div>
