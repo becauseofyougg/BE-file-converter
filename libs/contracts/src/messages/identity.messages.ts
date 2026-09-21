@@ -37,6 +37,43 @@ export interface VerifyEmailRequest {
   token?: string;
 }
 
+export interface VerifyEmailResponse {
+  status: 'verified';
+  userId: string;
+  tokens: TokenPair;
+}
+
+/**
+ * Either identifier works: the client normally still holds the `challengeId`
+ * from registration, and falls back to the email when it does not.
+ */
+export interface ResendVerificationRequest {
+  challengeId?: string;
+  email?: string;
+}
+
+/**
+ * Deliberately says nothing about whether the account exists or is already
+ * verified — see docs/REGISTRATION.md §5.4.
+ */
+export interface ResendVerificationResponse {
+  status: 'accepted';
+}
+
+/**
+ * What a `verification_tokens` row is for. Registration issues the first;
+ * password reset reuses the same table and lifecycle.
+ */
+export const VERIFICATION_TOKEN_TYPES = {
+  EMAIL_VERIFICATION: 'email_verification',
+  PASSWORD_RESET: 'password_reset',
+} as const;
+
+export type VerificationTokenType =
+  (typeof VERIFICATION_TOKEN_TYPES)[keyof typeof VERIFICATION_TOKEN_TYPES];
+
+export type ConfirmationMethod = 'otp' | 'link';
+
 export interface LoginRequest {
   email: string;
   password: string;

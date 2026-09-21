@@ -5,7 +5,9 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+# `--ignore-scripts` because the `postinstall` hook generates the Prisma
+# clients, and no schema is in this build context — the gateway owns no data.
+RUN npm ci --ignore-scripts
 
 COPY tsconfig*.json nest-cli.json ./
 COPY libs ./libs

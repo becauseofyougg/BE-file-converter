@@ -2,17 +2,17 @@ import Joi from 'joi';
 
 import {
   BaseConfig,
-  PostgresConfig,
+  DatabaseConfig,
   RabbitMQConfig,
   baseConfigSchema,
-  postgresConfigSchema,
+  databaseConfigSchema,
   rabbitmqConfigSchema,
 } from '@core/config';
 import { FormatFamily } from '@contracts/enums/conversion.enums';
 import { S3Config, s3ConfigSchema } from '@storage/storage.config';
 
 export interface ConversionConfig
-  extends BaseConfig, PostgresConfig, RabbitMQConfig, S3Config {
+  extends BaseConfig, DatabaseConfig, RabbitMQConfig, S3Config {
   /**
    * Which family this replica consumes. It decides the queue the worker binds
    * to *and* which binaries its image has to ship — an `image` deployment does
@@ -32,7 +32,7 @@ export interface ConversionConfig
 
 export const conversionConfigSchema = Joi.object<ConversionConfig>({
   ...baseConfigSchema,
-  ...postgresConfigSchema,
+  ...databaseConfigSchema,
   ...rabbitmqConfigSchema,
   ...s3ConfigSchema,
 

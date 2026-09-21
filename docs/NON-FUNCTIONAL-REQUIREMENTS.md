@@ -11,7 +11,7 @@
 
 | # | Requirement | Target | State in this repo |
 |---|---|---|---|
-| 1 | Query optimisation — indexes, explicit `select`, transactions where needed | No unindexed query on a hot path; no `SELECT *` crossing a service boundary | TypeORM + `typeorm-transactional` wired ([database.module.ts](../src/core/database/database.module.ts)), no entities yet |
+| 1 | Query optimisation — indexes, explicit `select`, transactions where needed | No unindexed query on a hot path; no `SELECT *` crossing a service boundary | Prisma + `@nestjs-cls/transactional` wired ([prisma.module.ts](../apps/identity-service/src/database/prisma.module.ts)); identity is modelled, the other two schemas are still empty |
 | 2 | Health checks (`/health`) | Liveness + readiness per service, used by compose/k8s probes | `/health` exists ([health.controller.ts](../src/core/health/health.controller.ts)), indicator list is **empty** |
 | 3 | Rate limiting | Global throttle + stricter per-user quota on conversions | `ThrottlerModule` configured ([throttler.module.ts](../src/core/throttler/throttler.module.ts)), **guard not registered** |
 | 4 | Validation of every input (class-validator) | Every HTTP DTO, every message payload, every env var | Global `ValidationPipe` with `whitelist` ([main.ts:21-25](../src/main.ts#L21-L25)), Joi for env |
@@ -43,7 +43,8 @@ The ones the API in §8 of the architecture actually demands:
 | `notifications` | `UNIQUE (user_id, type, ref_id)` | idempotency on message redelivery |
 | `outbox` | partial on `(sent_at IS NULL)` | relay polling only unsent rows |
 
-Indexes are created **in migrations**, never by `synchronize` — `POSTGRES_SYNCHRONIZE` stays `false`
+Indexes are created **in migrations**, never by `prisma db push` — which exists for prototyping and
+leaves no history
 outside local development.
 
 **Acceptance:** for each endpoint on a list or filter, an `EXPLAIN ANALYZE` on a seeded table shows an
@@ -66,7 +67,7 @@ hash or an internal storage key.
 
 ### 1.3 Transactions
 
-Transactional boundaries belong to the use case, not the repository. `typeorm-transactional` is already
+Transactional boundaries belong to the use case, not the repository. `@nestjs-cls/transactional` is already
 initialised in [main.ts:12](../src/main.ts#L12), so `@Transactional()` on a service method is all it takes.
 
 Where a transaction is mandatory:
@@ -107,7 +108,7 @@ brief DB blip, and if that is wired to liveness the whole fleet restarts itself 
 
 `/health` stays as the aggregate for humans and keeps the existing `HEALTH_CHECK_ENABLED` switch.
 The current [health.service.ts](../src/core/health/health.service.ts) passes an **empty indicator array** —
-filling it with `TypeOrmHealthIndicator`, a broker indicator, a storage indicator and
+filling it with a database indicator (a `SELECT 1` through Prisma), a broker indicator, a storage indicator and
 `DiskHealthIndicator` is the concrete task.
 
 Health endpoints are excluded from rate limiting (`@SkipThrottle()`) and from auth, and they expose no

@@ -48,15 +48,19 @@ export interface ThrottlerConfig {
   THROTTLE_GLOBAL_LIMIT?: number;
 }
 
-export interface PostgresConfig {
-  POSTGRES_HOST: string;
-  POSTGRES_PORT: number;
-  POSTGRES_USER: string;
-  POSTGRES_PASSWORD: string;
-  POSTGRES_DB: string;
-  POSTGRES_SYNCHRONIZE?: boolean;
-  POSTGRES_LOGGING?: boolean;
-  POSTGRES_MIGRATIONS_RUN?: boolean;
+export interface DatabaseConfig {
+  /**
+   * Prisma connects by URL, and the same value is what the CLI reads when
+   * running migrations — one variable rather than five that have to be
+   * assembled identically in two places.
+   *
+   * Database per service: this points at `identity`, `conversion` or
+   * `notification`, never at another service's schema.
+   */
+  DATABASE_URL: string;
+
+  /** Logs every statement. Development only — queries carry user data. */
+  DATABASE_LOG_QUERIES?: boolean;
 }
 
 export interface RabbitMQConfig {

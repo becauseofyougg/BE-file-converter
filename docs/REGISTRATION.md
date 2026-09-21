@@ -1,6 +1,6 @@
 # File Converter — Registration
 
-**Status:** draft for mentor approval
+**Status:** implemented — see §13 for where the code lives and where it refines this design
 **Date:** 2026-09-18
 **Owning service:** `identity-service`, exposed through `api-gateway` ([ARCHITECTURE.md §2](ARCHITECTURE.md#2-service-decomposition))
 **Related:** [ARCHITECTURE.md](ARCHITECTURE.md) · [NON-FUNCTIONAL-REQUIREMENTS.md](NON-FUNCTIONAL-REQUIREMENTS.md)
@@ -33,7 +33,7 @@ Email confirmation is switchable **per scenario**, independently:
 | `AUTH_CONFIRM_METHOD` | `otp` \| `link` — how the confirmation is delivered | `otp` |
 
 **Where they live.** For the MVP these are env vars validated by the existing Joi schema
-([config.validation.ts](../src/core/config/config.validation.ts)) — zero new machinery, and the whole
+([config.validation.ts](../libs/core/src/config/config.validation.ts)) — zero new machinery, and the whole
 config surface stays in one place. The requirement says *the administrator* toggles them, which strictly
 means a runtime switch and therefore a `settings` table plus an admin endpoint; that only makes sense
 once an admin surface exists at all (open question 6 in [ARCHITECTURE.md](ARCHITECTURE.md#14-open-questions)).
@@ -174,6 +174,16 @@ Takes `challengeId` (or the email), applies the resend limits from §5.1, invali
 token, and always answers `202` with a neutral body regardless of whether the account exists or is
 already verified.
 
+**A resend rotates the secret inside the existing challenge** rather than opening a new one, so the
+`challengeId` the client received at registration stays valid and the response can stay genuinely
+neutral — a new handle would have to be returned, and returning one for an address that has no
+account is exactly the leak this endpoint is meant to avoid. A unique partial index on
+`(user_id, type) WHERE used_at IS NULL` makes "at most one live challenge" a database guarantee
+rather than a convention.
+
+Rotating resets `attempts`, which is safe because the resend limits bound the total: 5 resends an
+hour × 5 guesses each is 25 attempts against a one-in-a-million code.
+
 ---
 
 ## 6. Flows
@@ -208,7 +218,7 @@ With confirmation off the flow collapses to the first exchange, returning `201` 
 ## 7. Data model
 
 Uses the tables already in [ARCHITECTURE.md §7](ARCHITECTURE.md#7-data-model); registration needs no new
-ones:
+ones. They live in [schema.prisma](../apps/identity-service/prisma/schema.prisma):
 
 - `users` — `email CITEXT UNIQUE`, `password_hash`, `role`, `email_verified_at`, timestamps.
 - `verification_tokens` — `user_id`, `type`, `token_hash`, `expires_at`, `used_at`, plus `attempts` and a
@@ -240,7 +250,18 @@ branch on a stable `code`:
 
 **On email enumeration.** Hiding whether an address is registered is only achievable when confirmation is
 **on**: the endpoint then answers `202` identically in both cases, and the existing account is told by
-email that someone tried to register with their address. With confirmation **off** the response must
+email that someone tried to register with their address. Concretely, an occupied address takes one of
+two paths, and neither is distinguishable from a free one by the caller:
+
+| Existing account | What happens | What the caller gets |
+|---|---|---|
+| unverified | its challenge is rotated and a fresh code mailed — the ordinary "I lost the first mail" case | the real `challengeId` |
+| verified | `user.registration_attempted` is published and the owner gets a notice; no account is touched | a `challengeId` matching no row, against which any code fails as a wrong code would |
+
+Hitting the 60-second resend cooldown on the first path is swallowed rather than returned: surfacing
+it would turn the refusal itself into proof that the address exists.
+
+With confirmation **off** the response must
 differ — the caller either gets a session or does not — so a plain `409` is the honest answer, and the
 registration throttle is what makes enumeration expensive rather than impossible. Documenting which mode
 gives which guarantee is the point; pretending both are equally private is not.
@@ -317,6 +338,34 @@ silent truncation trap, and it is not memory-hard, which is exactly what GPU cra
 and turboSMTP in production ([ARCHITECTURE.md §12](ARCHITECTURE.md#12-local-stack)). Templates are
 versioned with the service; each send is idempotent on `(user_id, type, ref_id)` so a redelivered message
 does not send a second letter.
+
+---
+
+## 13. Where the code lives
+
+| Concern | File |
+|---|---|
+| Flags, behind the swappable interface of §2 | [auth-settings.service.ts](../apps/identity-service/src/modules/auth/auth-settings.service.ts) |
+| Register / verify / resend | [auth.service.ts](../apps/identity-service/src/modules/auth/auth.service.ts) |
+| Challenge lifecycle, §5 | [verification.service.ts](../apps/identity-service/src/modules/auth/verification.service.ts) |
+| argon2id and the password policy, §4.1 | [password.service.ts](../apps/identity-service/src/modules/auth/password.service.ts) |
+| Access + refresh tokens, §12 | [tokens.service.ts](../apps/identity-service/src/modules/tokens/tokens.service.ts) |
+| Outbox and its relay, §4.2 | [modules/outbox/](../apps/identity-service/src/modules/outbox/) |
+| Cleanup, §7 | [verification-cleanup.job.ts](../apps/identity-service/src/modules/auth/verification-cleanup.job.ts) |
+| Schema, §7 | [schema.prisma](../apps/identity-service/prisma/schema.prisma) and its [migration](../apps/identity-service/prisma/migrations/) |
+| RPC surface | [auth.controller.ts](../apps/identity-service/src/modules/auth/auth.controller.ts) |
+| HTTP surface and cookies, §4.3 | [gateway auth.controller.ts](../apps/api-gateway/src/modules/auth/auth.controller.ts) |
+| Error envelope, §8 | [libs/core/src/errors/](../libs/core/src/errors/) |
+| Per-email rate limit, §10 | [email-rate-limit.guard.ts](../apps/api-gateway/src/modules/auth/email-rate-limit.guard.ts) |
+
+Two events were added beyond those the architecture listed, both consumed by
+`notification-service`: `user.verification_resent` and `user.registration_attempted` (§8).
+
+**Not yet built:** login, refresh rotation and password reset, which is why `refresh_tokens` is
+written but never yet read back, and why `AUTH_CONFIRM_LOGIN` and `AUTH_CONFIRM_PASSWORD_RESET` are
+read by the settings service but not acted on. The mail templates themselves belong to
+`notification-service` and are still to come — identity publishes the events, nothing consumes them
+yet.
 
 **Still to confirm with the mentor:**
 

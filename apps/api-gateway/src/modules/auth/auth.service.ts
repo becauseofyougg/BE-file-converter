@@ -1,0 +1,62 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { ClientProxy } from '@nestjs/microservices';
+
+import {
+  IDENTITY_PATTERNS,
+  type RegisterResponse,
+  type ResendVerificationResponse,
+  type VerifyEmailResponse,
+} from '@contracts/messages/identity.messages';
+import { IDENTITY_CLIENT } from '../../messaging/messaging.module';
+import { sendRpc } from '../../messaging/rpc';
+
+export interface CallerContext {
+  correlationId: string;
+  userAgent?: string;
+  ip?: string;
+}
+
+/**
+ * A thin forwarder. The gateway owns no auth logic of its own — putting any
+ * of it here would mean two services deciding who may register, and the one
+ * that owns the data losing.
+ */
+@Injectable()
+export class AuthService {
+  constructor(
+    @Inject(IDENTITY_CLIENT) private readonly identity: ClientProxy,
+  ) {}
+
+  register(
+    input: { email: string; password: string },
+    caller: CallerContext,
+  ): Promise<RegisterResponse> {
+    return sendRpc<RegisterResponse, Record<string, unknown>>(
+      this.identity,
+      IDENTITY_PATTERNS.REGISTER,
+      { ...input, ...caller },
+    );
+  }
+
+  verifyEmail(
+    input: { challengeId?: string; code?: string; token?: string },
+    caller: CallerContext,
+  ): Promise<VerifyEmailResponse> {
+    return sendRpc<VerifyEmailResponse, Record<string, unknown>>(
+      this.identity,
+      IDENTITY_PATTERNS.VERIFY_EMAIL,
+      { ...input, ...caller },
+    );
+  }
+
+  resendVerification(
+    input: { challengeId?: string; email?: string },
+    caller: CallerContext,
+  ): Promise<ResendVerificationResponse> {
+    return sendRpc<ResendVerificationResponse, Record<string, unknown>>(
+      this.identity,
+      IDENTITY_PATTERNS.RESEND_VERIFICATION,
+      { ...input, correlationId: caller.correlationId },
+    );
+  }
+}

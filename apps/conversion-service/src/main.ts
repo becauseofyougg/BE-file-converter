@@ -5,10 +5,6 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { Logger } from 'nestjs-pino';
-import {
-  initializeTransactionalContext,
-  StorageDriver,
-} from 'typeorm-transactional';
 
 import { ConfigService } from '@core/config/config.service';
 import { FormatFamily } from '@contracts/enums/conversion.enums';
@@ -21,8 +17,6 @@ import { ConversionConfig } from './config/conversion.config';
  * work is CPU-bound.
  */
 async function bootstrap() {
-  initializeTransactionalContext({ storageDriver: StorageDriver.AUTO });
-
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter(),

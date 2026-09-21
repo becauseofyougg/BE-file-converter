@@ -2,15 +2,15 @@ import Joi from 'joi';
 
 import {
   BaseConfig,
-  PostgresConfig,
+  DatabaseConfig,
   RabbitMQConfig,
   baseConfigSchema,
-  postgresConfigSchema,
+  databaseConfigSchema,
   rabbitmqConfigSchema,
 } from '@core/config';
 
 export interface IdentityConfig
-  extends BaseConfig, PostgresConfig, RabbitMQConfig {
+  extends BaseConfig, DatabaseConfig, RabbitMQConfig {
   /**
    * Email confirmation, switchable per scenario — see docs/REGISTRATION.md §2.
    */
@@ -26,7 +26,7 @@ export interface IdentityConfig
 
 export const identityConfigSchema = Joi.object<IdentityConfig>({
   ...baseConfigSchema,
-  ...postgresConfigSchema,
+  ...databaseConfigSchema,
   ...rabbitmqConfigSchema,
 
   AUTH_CONFIRM_REGISTRATION: Joi.boolean().optional().default(true),

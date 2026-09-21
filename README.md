@@ -91,21 +91,35 @@ documents every key.
 travels only as messages. Locally that is one PostgreSQL container with three databases (`identity`,
 `conversion`, `notification`), created by `docker/postgres/init-databases.sh`.
 
-- **Connection:** `DatabaseModule.forRoot({ migrations })` in the owning service's `AppModule`
-- **Entities:** `TypeOrmModule.forFeature([YourEntity])` in a feature module, then `@InjectRepository(...)`
-- **Transactions:** `@Transactional()` from `typeorm-transactional` (the context is initialised in each `main.ts`)
-- **Schema:** migrations in `apps/<service>/src/database/migrations/`. `POSTGRES_SYNCHRONIZE` is `false` — do not rely on auto-sync
+The ORM is **Prisma**, one schema per service at `apps/<service>/prisma/schema.prisma`.
+
+- **Connection:** `PrismaModule` in the owning service's `AppModule`; the client is `PrismaService`
+- **Queries:** inject `TransactionHost` and go through `this.txHost.tx.<model>` — never `PrismaService`
+  directly, or the query will not join an open transaction
+- **Transactions:** `@Transactional()` from `@nestjs-cls/transactional`
+- **Schema:** edit `schema.prisma`, then `npm run migrate:dev:identity` to generate a migration
 
 ```bash
-npm run migration:generate:identity     # also :conversion, :notification
-npm run migration:run:identity
-npm run migration:revert:identity
-npm run migration:show:identity
+npm run prisma:generate                 # all three clients; also runs on npm install
+npm run migrate:dev:identity            # also :conversion, :notification
+npm run migrate:deploy:identity         # apply without generating — what containers run
+npm run migrate:status:identity
+npm run studio:identity
 ```
 
-Each service has its own CLI data source at `apps/<service>/src/database/data-source.ts`. At runtime Nest
-uses the DataSource from `DatabaseModule`; with `POSTGRES_MIGRATIONS_RUN=true` pending migrations also run
-on start.
+**Two URLs, on purpose.** Each schema reads `IDENTITY_DATABASE_URL` / `CONVERSION_DATABASE_URL` /
+`NOTIFICATION_DATABASE_URL`, used by the Prisma **CLI** only — the three schemas share one root `.env`
+in development, so a single name would point every CLI at whichever database was configured last. The
+**running service** reads `DATABASE_URL`, which is the one variable compose sets per container.
+
+Clients are generated into `node_modules/@prisma-clients/<service>`, so a bare import resolves the same
+from `src` and from `dist`. `npm install` and `npm prune` both delete them, which is why `postinstall`
+regenerates and why the Dockerfiles generate again after pruning.
+
+**Partial indexes** are not expressible in Prisma's schema language and are maintained by hand at the
+end of the migration SQL. `prisma migrate dev` does not know about them and will propose dropping them
+— keep them. One of them (`uq_verification_tokens_live`) is a correctness guarantee, not a performance
+tweak.
 
 ## Messaging
 
@@ -127,8 +141,9 @@ Consumers run with manual ack and `prefetchCount=1`, on durable quorum queues.
 | Messaging | RabbitMQ (`@nestjs/microservices`) |
 | Env validation | Joi |
 | Request validation | class-validator |
-| ORM | TypeORM (`@nestjs/typeorm`) |
-| Database | PostgreSQL (`pg`) |
+| ORM | Prisma (`@prisma/client`) |
+| Transactions | `@nestjs-cls/transactional` (AsyncLocalStorage) |
+| Database | PostgreSQL |
 | Object storage | S3 / MinIO (`@aws-sdk/client-s3`) |
 | Logging | pino (`nestjs-pino`) |
 
