@@ -1,0 +1,735 @@
+<title>File Converter Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap">
+
+<style>
+  :root {
+    --ground: #F1F4F3;
+    --surface: #FFFFFF;
+    --surface-2: #E7EDEB;
+    --ink: #131A1B;
+    --ink-2: #3C4A4B;
+    --muted: #667576;
+    --line: #D5DEDC;
+    --line-strong: #B6C3C0;
+    --accent: #0C6B60;
+    --accent-soft: #DCEDE9;
+    --signal: #96501E;
+    --signal-soft: #F4E6DA;
+    --code-bg: #EBF1EF;
+    --invert-bg: #101817;
+    --invert-fg: #EDF2F0;
+    --invert-accent: #5CCDBA;
+    --invert-muted: #8DA09D;
+
+    --serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F1415;
+      --surface: #161D1E;
+      --surface-2: #1C2525;
+      --ink: #E7EDEB;
+      --ink-2: #BFCBC9;
+      --muted: #8A9A99;
+      --line: #253030;
+      --line-strong: #384544;
+      --accent: #54C9B6;
+      --accent-soft: #10302C;
+      --signal: #E09A63;
+      --signal-soft: #30221A;
+      --code-bg: #111819;
+      --invert-bg: #060A0B;
+      --invert-fg: #E7EDEB;
+      --invert-accent: #54C9B6;
+      --invert-muted: #7F908E;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0F1415;
+    --surface: #161D1E;
+    --surface-2: #1C2525;
+    --ink: #E7EDEB;
+    --ink-2: #BFCBC9;
+    --muted: #8A9A99;
+    --line: #253030;
+    --line-strong: #384544;
+    --accent: #54C9B6;
+    --accent-soft: #10302C;
+    --signal: #E09A63;
+    --signal-soft: #30221A;
+    --code-bg: #111819;
+    --invert-bg: #060A0B;
+    --invert-fg: #E7EDEB;
+    --invert-accent: #54C9B6;
+    --invert-muted: #7F908E;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce) { body { scroll-behavior: auto; } }
+
+  .slide {
+    scroll-snap-align: start;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.9em;
+    padding: 4.5vh clamp(20px, 5vw, 76px) 7vh;
+    border-bottom: 1px solid var(--line);
+    font-size: clamp(12px, min(1.85vh, 2.5vw), 18px);
+    line-height: 1.5;
+  }
+
+  .slide--invert {
+    background: var(--invert-bg);
+    color: var(--invert-fg);
+    border-bottom: none;
+  }
+  .slide--invert .eyebrow { color: var(--invert-accent); }
+  .slide--invert .lede { color: var(--invert-muted); }
+  .slide--invert .k { color: var(--invert-accent); }
+  .slide--invert .chip { border-color: #2C3B39; background: rgba(255,255,255,0.04); color: var(--invert-fg); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72em;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 3.4em;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    margin: 0.1em 0 0;
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 2.15em;
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .lede { font-size: 1.15em; color: var(--ink-2); max-width: 48ch; margin: 0; }
+
+  p { margin: 0; max-width: 62ch; }
+  .k { color: var(--accent); font-weight: 600; }
+  strong { font-weight: 600; }
+
+  .cover-meta { display: flex; flex-wrap: wrap; gap: 0.5em; margin-top: 1.4em; }
+  .tag {
+    font-family: var(--mono);
+    font-size: 0.78em;
+    letter-spacing: 0.06em;
+    padding: 0.35em 0.8em;
+    border: 1px solid #2C3B39;
+    color: var(--invert-muted);
+  }
+  .cover-foot {
+    font-family: var(--mono);
+    font-size: 0.75em;
+    letter-spacing: 0.06em;
+    color: var(--invert-muted);
+    margin-top: 2.2em;
+  }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 1em; margin-top: 0.4em; }
+  .cols--2 { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+
+  .card {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 0.9em 1.05em;
+    display: flex;
+    flex-direction: column;
+    gap: 0.28em;
+  }
+  .card--key { border-color: var(--accent); background: var(--accent-soft); }
+  .card h3 { font-family: var(--mono); font-size: 0.85em; font-weight: 500; margin: 0; color: var(--ink); }
+  .card p { font-size: 0.86em; color: var(--ink-2); max-width: none; }
+  .card .stat {
+    font-family: var(--mono);
+    font-size: 0.7em;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-top: 0.2em;
+  }
+
+  .points { margin: 0.2em 0 0; padding: 0; list-style: none; display: grid; gap: 0.7em; max-width: 64ch; }
+  .points li { display: grid; grid-template-columns: 1.6em 1fr; gap: 0.6em; font-size: 0.96em; }
+  .points .b { font-family: var(--mono); font-size: 0.8em; color: var(--accent); padding-top: 0.25em; }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    line-height: 1.6;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    padding: 0.9em 1.1em;
+    overflow-x: auto;
+    margin: 0;
+  }
+  pre .c { color: var(--muted); }
+  code { font-family: var(--mono); font-size: 0.9em; background: var(--code-bg); padding: 0.05em 0.35em; border-radius: 3px; }
+  .slide--invert code { background: rgba(255,255,255,0.07); }
+
+  .scroll { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.83em; min-width: 460px; }
+  th, td { text-align: left; padding: 0.55em 0.85em; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 0.76em;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .svc { font-family: var(--mono); white-space: nowrap; }
+
+  .diagram { overflow-x: auto; }
+  .diagram svg { width: 100%; min-width: 700px; height: auto; display: block; max-height: 60vh; }
+
+  .n-box { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.2; }
+  .n-key { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .n-mq { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1.4; }
+  .n-db { fill: none; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+  .n-t { font-family: var(--mono); font-size: 12px; fill: var(--ink); }
+  .n-s { font-family: var(--sans); font-size: 9.5px; fill: var(--muted); }
+  .n-dbt { font-family: var(--mono); font-size: 9px; fill: var(--muted); }
+  .e-cmd { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+  .e-evt { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 3; }
+  .e-out { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+  .e-l { font-family: var(--sans); font-size: 9.5px; fill: var(--muted); }
+  .e-la { font-family: var(--mono); font-size: 9px; fill: var(--accent); }
+  .e-lr { font-family: var(--sans); font-size: 9.5px; fill: var(--accent); }
+  .legend { font-family: var(--mono); font-size: 0.73em; letter-spacing: 0.04em; color: var(--muted); }
+
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45em; }
+  .chip {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    letter-spacing: 0.04em;
+    padding: 0.35em 0.65em;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .chip.ok { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .chip.bad { border-color: var(--signal); background: var(--signal-soft); color: var(--signal); }
+  .arr { font-family: var(--mono); color: var(--muted); font-size: 0.95em; }
+  .arr.txt { font-family: var(--sans); font-size: 0.85em; }
+  .note { font-size: 0.85em; color: var(--muted); max-width: 62ch; }
+
+  .ladder { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45em; font-family: var(--mono); font-size: 0.82em; }
+  .ladder .step { padding: 0.35em 0.65em; border: 1px solid var(--accent); color: var(--accent); }
+  .ladder .dlq { padding: 0.35em 0.65em; border: 1px solid var(--signal); background: var(--signal-soft); color: var(--signal); }
+
+  .qs { margin: 0; padding-left: 1.3em; display: grid; gap: 0.5em; max-width: 62ch; }
+  .qs li { font-size: 0.95em; }
+  .qs li::marker { font-family: var(--mono); font-size: 0.8em; color: var(--signal); }
+  .qs .first { color: var(--signal); font-weight: 600; }
+
+  .hud {
+    position: fixed;
+    right: clamp(12px, 2.5vw, 28px);
+    bottom: clamp(12px, 2.5vh, 24px);
+    display: flex;
+    align-items: center;
+    gap: 0.8em;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--ground) 86%, transparent);
+    border: 1px solid var(--line);
+    padding: 5px 10px;
+    z-index: 5;
+  }
+  .hud .dots { display: flex; gap: 4px; }
+  .hud .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); }
+  .hud .dot.on { background: var(--accent); }
+  .hud .hint { color: var(--muted); opacity: 0.75; }
+
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  @media print {
+    @page { size: A4 landscape; margin: 9mm; }
+    body { background: #fff; scroll-snap-type: none; }
+    .hud { display: none; }
+    .slide {
+      min-height: 0;
+      height: auto;
+      break-after: page;
+      page-break-after: always;
+      border-bottom: none;
+      padding: 0 0 6mm;
+      font-size: 10.5pt;
+      justify-content: flex-start;
+      gap: 3mm;
+    }
+    .slide:last-of-type { break-after: auto; page-break-after: auto; }
+    .slide--invert { background: #fff; color: #111; }
+    .slide--invert .eyebrow, .slide--invert .k { color: #0C6B60; }
+    .slide--invert .lede { color: #444; }
+    .slide--invert .tag { border-color: #bbb; color: #555; }
+    .slide--invert .cover-foot { color: #666; }
+    .diagram svg { max-height: none; min-width: 0; }
+    .scroll, pre, .card { break-inside: avoid; }
+  }
+</style>
+
+<div class="hud" role="status" aria-live="off">
+  <span class="dots" id="dots"></span>
+  <span id="counter">01 / 15</span>
+  <span class="hint">&larr; &rarr;</span>
+</div>
+
+<main id="deck">
+
+  <!-- 01 -->
+  <section class="slide slide--invert">
+    <p class="eyebrow">Architecture proposal &middot; agreed with mentor</p>
+    <h1>File Converter<br>Backend</h1>
+    <p class="lede">Five NestJS services in one monorepo, a RabbitMQ work queue, S3-compatible object storage.</p>
+    <div class="cover-meta">
+      <span class="tag">NestJS 11</span>
+      <span class="tag">Fastify</span>
+      <span class="tag">RabbitMQ</span>
+      <span class="tag">PostgreSQL &middot; TypeORM</span>
+      <span class="tag">MinIO / S3</span>
+    </div>
+    <p class="cover-foot">18 Sep 2026</p>
+  </section>
+
+  <!-- 02 -->
+  <section class="slide slide--invert">
+    <p class="eyebrow">01 &middot; Two load-bearing decisions</p>
+    <h2>HTTP requests never<br>do the conversion</h2>
+    <div class="flow" style="margin-top:0.7em">
+      <span class="chip">record job</span><span class="arr">&rarr;</span>
+      <span class="chip">presigned URL</span><span class="arr">&rarr;</span>
+      <span class="chip">client PUTs to S3</span><span class="arr">&rarr;</span>
+      <span class="chip"><span class="k">202</span></span><span class="arr">&rarr;</span>
+      <span class="chip">queue</span><span class="arr">&rarr;</span>
+      <span class="chip">worker</span>
+    </div>
+    <p class="lede" style="margin-top:0.7em">And the second, no less important: <span class="k">the gateway owns the jobs, and the workers have no database.</span> That is why there can be two converters, or three, or five, without the data model changing.</p>
+  </section>
+
+  <!-- 03 -->
+  <section class="slide">
+    <p class="eyebrow">02 &middot; Decomposition</p>
+    <h2>Five services</h2>
+    <div class="cols">
+      <div class="card">
+        <h3>api-gateway</h3>
+        <p>The only REST surface. Local JWT, presigned URLs, and it <strong>owns the jobs</strong>: creates them, consumes results, writes status.</p>
+        <span class="stat">gateway DB</span>
+      </div>
+      <div class="card">
+        <h3>identity-service</h3>
+        <p>Registration, login, JWT and refresh, email verification, password reset.</p>
+        <span class="stat">identity DB</span>
+      </div>
+      <div class="card card--key">
+        <h3>image-service</h3>
+        <p>Images on <code>sharp</code>. A light image with no external binaries.</p>
+        <span class="stat">no DB &middot; CPU &middot; &times;N</span>
+      </div>
+      <div class="card card--key">
+        <h3>data-service</h3>
+        <p>csv, json, xml, yaml — all 12 directions. Pure Node.</p>
+        <span class="stat">no DB &middot; CPU &middot; &times;N</span>
+      </div>
+      <div class="card">
+        <h3>notification-service</h3>
+        <p>Browsers' SSE connections, notification history, auth mail.</p>
+        <span class="stat">notification DB</span>
+      </div>
+    </div>
+    <p class="note">The second converter was called "the text service" in discussion. Here it is <code>data-service</code>: it handles structured text formats, not documents. <code>docx&nbsp;→&nbsp;pdf</code> would be a third service with its own image.</p>
+  </section>
+
+  <!-- 04 -->
+  <section class="slide">
+    <p class="eyebrow">02 &middot; Rationale</p>
+    <h2>Why the boundary falls here</h2>
+    <ul class="points">
+      <li><span class="b">01</span><span><strong>Between the converters, the split is by image weight, not domain.</strong> <code>image-service</code> carries only <code>sharp</code>. Any heavyweight engine added later brings hundreds of megabytes &mdash; to its own service, leaving the others untouched.</span></li>
+      <li><span class="b">02</span><span><strong>Auth is split out</strong> to keep the gateway free of user-table coupling.</span></li>
+      <li><span class="b">03</span><span><strong>Notifications are split out</strong> because a live SSE connection costs memory and a connection slot, not CPU.</span></li>
+      <li><span class="b">&mdash;</span><span><strong>A job cannot have two owners.</strong> The job list must be one paginated query, not a merge across sources &mdash; so <code>conversion_jobs</code> lives in the gateway's DB and the workers never touch a database.</span></li>
+    </ul>
+  </section>
+
+  <!-- 05 -->
+  <section class="slide">
+    <p class="eyebrow">02 &middot; Topology</p>
+    <h2>Request, message and byte flow</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 420" role="img" aria-labelledby="dgt">
+        <title id="dgt">Flow between five services, the broker and object storage</title>
+        <defs>
+          <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)"></path>
+          </marker>
+          <marker id="ar-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--muted)"></path>
+          </marker>
+        </defs>
+
+        <path class="e-cmd" d="M 70 176 C 220 30, 660 18, 884 124" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+        <text class="e-lr" x="450" y="22" text-anchor="middle">bytes: PUT the source, GET the result &mdash; direct, never through Node</text>
+
+        <rect class="n-box" x="16" y="180" width="104" height="52" rx="5"></rect>
+        <text class="n-t" x="68" y="211" text-anchor="middle">Client</text>
+
+        <path class="e-cmd" d="M 124 206 L 164 206" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+        <text class="e-l" x="144" y="158" text-anchor="middle">HTTPS &middot; presigned URL</text>
+
+        <rect class="n-key" x="168" y="168" width="156" height="58" rx="5"></rect>
+        <text class="n-t" x="246" y="190" text-anchor="middle">api-gateway</text>
+        <text class="n-s" x="246" y="207" text-anchor="middle">REST &middot; local JWT &middot; presigning</text>
+        <rect class="n-db" x="184" y="234" width="124" height="20" rx="3"></rect>
+        <text class="n-dbt" x="246" y="248" text-anchor="middle">gateway DB &middot; jobs</text>
+
+        <path class="e-cmd" d="M 326 196 L 388 196" marker-end="url(#ar-a)"></path>
+        <text class="e-la" x="357" y="158" text-anchor="middle">conversion.requested</text>
+        <path class="e-evt" d="M 388 216 L 328 216" marker-end="url(#ar-m)"></path>
+        <text class="e-l" x="357" y="236" text-anchor="middle">result.*</text>
+
+        <rect class="n-mq" x="392" y="166" width="136" height="76" rx="5"></rect>
+        <text class="n-t" x="460" y="194" text-anchor="middle">RabbitMQ</text>
+        <text class="n-s" x="460" y="211" text-anchor="middle">commands &middot; results</text>
+        <text class="n-s" x="460" y="226" text-anchor="middle">events &middot; DLX &middot; quorum</text>
+
+        <path class="e-cmd" d="M 530 182 L 560 182 L 560 122 L 592 122" marker-end="url(#ar-a)"></path>
+        <text class="e-la" x="596" y="88">convert.image</text>
+        <path class="e-cmd" d="M 530 198 L 592 198" marker-end="url(#ar-a)"></path>
+        <text class="e-la" x="596" y="164">convert.data</text>
+
+        <path class="e-evt" d="M 592 134 L 578 134 L 578 172 L 532 172" marker-end="url(#ar-m)"></path>
+        <path class="e-evt" d="M 592 212 L 532 212" marker-end="url(#ar-m)"></path>
+        <text class="e-l" x="534" y="232">result.completed / failed</text>
+
+        <rect class="n-key" x="596" y="96" width="172" height="52" rx="5"></rect>
+        <text class="n-t" x="682" y="118" text-anchor="middle">image-service</text>
+        <text class="n-s" x="682" y="134" text-anchor="middle">sharp &middot; &times;N &middot; no database</text>
+
+        <rect class="n-key" x="596" y="172" width="172" height="52" rx="5"></rect>
+        <text class="n-t" x="682" y="194" text-anchor="middle">data-service</text>
+        <text class="n-s" x="682" y="210" text-anchor="middle">csv/json/xml/yaml &middot; no database</text>
+
+        <path class="e-cmd" d="M 770 122 L 816 140" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+        <path class="e-cmd" d="M 770 198 L 816 176" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+        <rect class="n-box" x="820" y="130" width="140" height="56" rx="5"></rect>
+        <text class="n-t" x="890" y="152" text-anchor="middle">MinIO / S3</text>
+        <text class="n-s" x="890" y="168" text-anchor="middle">private buckets</text>
+        <text class="e-l" x="890" y="202" text-anchor="middle">source / result</text>
+
+        <path class="e-cmd" d="M 460 244 L 460 296" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+        <text class="e-l" x="450" y="268" text-anchor="end">login / refresh</text>
+        <text class="e-l" x="450" y="282" text-anchor="end">&mdash; rare, not per request</text>
+        <rect class="n-box" x="392" y="300" width="136" height="46" rx="5"></rect>
+        <text class="n-t" x="460" y="328" text-anchor="middle">identity-service</text>
+        <rect class="n-db" x="414" y="352" width="92" height="20" rx="3"></rect>
+        <text class="n-dbt" x="460" y="366" text-anchor="middle">identity DB</text>
+
+        <path class="e-evt" d="M 505 244 L 505 270 L 682 270 L 682 296" marker-end="url(#ar-m)"></path>
+        <text class="e-la" x="570" y="264" text-anchor="middle">domain.events</text>
+        <rect class="n-key" x="596" y="300" width="172" height="52" rx="5"></rect>
+        <text class="n-t" x="682" y="322" text-anchor="middle">notification-service</text>
+        <text class="n-s" x="682" y="338" text-anchor="middle">SSE &middot; history &middot; mail</text>
+        <rect class="n-db" x="614" y="358" width="136" height="20" rx="3"></rect>
+        <text class="n-dbt" x="682" y="372" text-anchor="middle">notification DB</text>
+
+        <path class="e-out" d="M 770 326 L 816 326" marker-end="url(#ar-m)"></path>
+        <rect class="n-box" x="820" y="300" width="140" height="52" rx="5"></rect>
+        <text class="n-t" x="890" y="322" text-anchor="middle">SMTP</text>
+        <text class="n-s" x="890" y="338" text-anchor="middle">auth mail only</text>
+
+        <path class="e-evt" d="M 596 340 L 570 340 L 570 400 L 40 400 L 40 234" marker-end="url(#ar-m)"></path>
+        <text class="e-l" x="300" y="393" text-anchor="middle">SSE &mdash; job status into the browser</text>
+      </svg>
+    </div>
+    <p class="legend">Top arc &mdash; bytes around Node &nbsp;&middot;&nbsp; bottom arc &mdash; SSE &nbsp;&middot;&nbsp; workers have no DB, the gateway does</p>
+  </section>
+
+  <!-- 06 -->
+  <section class="slide">
+    <p class="eyebrow">03 &middot; Repository</p>
+    <h2>A shared worker core is mandatory</h2>
+<pre><code>apps/
+  api-gateway/            <span class="c">// REST + owner of the jobs</span>
+  identity-service/       <span class="c">// RMQ request/response</span>
+  image-service/          <span class="c">// RMQ consumer, sharp</span>
+  data-service/           <span class="c">// RMQ consumer, csv/json/xml/yaml</span>
+  notification-service/   <span class="c">// SSE + history + SMTP</span>
+libs/
+  core/ contracts/ storage/ observability/
+  worker-kit/             <span class="c">// download → verify → convert → upload</span></code></pre>
+    <p class="note">Both converters do the same thing and differ <strong>only in the converter registry</strong>. Without <code>worker-kit</code> you get two nearly identical services &mdash; the first thing a reviewer will pick on.</p>
+  </section>
+
+  <!-- 07 -->
+  <section class="slide">
+    <p class="eyebrow">04 &middot; Messaging</p>
+    <h2>Three exchanges, three roles</h2>
+    <div class="cols cols--2">
+      <div class="card card--key">
+        <h3>conversion.commands</h3>
+        <p><code>convert.image</code> and <code>convert.data</code> &mdash; two queues, two deployments, two images.</p>
+      </div>
+      <div class="card">
+        <h3>conversion.results</h3>
+        <p>The worker reports <code>result.completed</code>. Only the gateway listens.</p>
+      </div>
+      <div class="card">
+        <h3>domain.events</h3>
+        <p>Public events. notification-service binds <strong>two queues</strong>: shared for mail, exclusive-per-replica for SSE.</p>
+      </div>
+    </div>
+    <p class="note"><strong>Why results go through the gateway.</strong> The public <code>conversion.completed</code> is emitted only <span class="k">after the state is committed</span>. Otherwise the user gets an SSE "done", requests the link, and catches a <code>409 NOT_READY</code> because the status has not been applied yet.</p>
+  </section>
+
+  <!-- 08 -->
+  <section class="slide">
+    <p class="eyebrow">04 &middot; Reliability</p>
+    <h2>Delivery guarantees</h2>
+    <ul class="points">
+      <li><span class="b">01</span><span><strong>One job at a time per worker.</strong> <code>prefetchCount: 1</code>, manual ack. A crash redelivers exactly one job.</span></li>
+      <li><span class="b">02</span><span><strong>Idempotency lives in the gateway.</strong> A worker with no database cannot check status &mdash; but a repeated <code>result.completed</code> for a finished job is a no-op.</span></li>
+      <li><span class="b">03</span><span><strong>Transactional outbox</strong> in gateway and identity: the state row and the outbox row in one transaction.</span></li>
+    </ul>
+    <div class="ladder" style="margin-top:0.4em">
+      <span class="step">attempt 1</span><span class="arr">&rarr;</span>
+      <span class="step">+10 s</span><span class="arr">&rarr;</span>
+      <span class="step">+60 s</span><span class="arr">&rarr;</span>
+      <span class="step">+300 s</span><span class="arr">&rarr;</span>
+      <span class="dlq">DLQ &middot; FAILED</span>
+    </div>
+    <p class="note">Permanent failures &mdash; corrupt input, unsupported pair, <code>NOT_TABULAR</code> &mdash; never burn three attempts.</p>
+  </section>
+
+  <!-- 09 -->
+  <section class="slide">
+    <p class="eyebrow">05 &middot; Pipeline</p>
+    <h2>Only the gateway writes status</h2>
+    <div class="flow">
+      <span class="chip">PENDING</span><span class="arr">&rarr;</span>
+      <span class="chip">QUEUED</span><span class="arr">&rarr;</span>
+      <span class="chip">PROCESSING</span><span class="arr">&rarr;</span>
+      <span class="chip ok">COMPLETED</span><span class="arr">&rarr;</span>
+      <span class="chip">EXPIRED</span>
+    </div>
+    <div class="flow">
+      <span class="arr">&#8627;</span>
+      <span class="chip">RETRYING</span><span class="arr">&#8617;</span>
+      <span class="arr">&middot;</span>
+      <span class="chip bad">FAILED</span>
+      <span class="arr">&middot;</span>
+      <span class="chip">CANCELLED</span>
+    </div>
+    <p class="note">Every transition appends to <code>job_events</code> &mdash; the trail that answers "why did this job take four minutes" without digging through logs.</p>
+    <p class="note"><strong>The worker makes no database query at all.</strong> The command already carries everything: <code>sourceKey</code>, <code>resultKey</code>, formats, options. It re-verifies the file type <span class="k">by signature</span>, never by extension.</p>
+  </section>
+
+  <!-- 10 -->
+  <section class="slide">
+    <p class="eyebrow">06 &middot; Data</p>
+    <h2>Twelve directions out of eight pieces</h2>
+    <div class="flow" style="margin:0.3em 0">
+      <span class="chip">csv</span><span class="chip">json</span><span class="chip">xml</span><span class="chip">yaml</span>
+      <span class="arr">&rarr; parse &rarr;</span>
+      <span class="chip ok">canonical model</span>
+      <span class="arr">&rarr; serialize &rarr;</span>
+      <span class="chip">csv</span><span class="chip">json</span><span class="chip">xml</span><span class="chip">yaml</span>
+    </div>
+    <p>csv, json, xml and yaml are different representations of one structure. So not twelve converters &mdash; <strong>four parsers and four serializers</strong>.</p>
+    <p class="note">A fifth format adds eight new directions for two pieces instead of eight. Testing splits too: a parser is checked for reading correctly, a serializer for writing correctly, with no combinatorial explosion. The <code>GET /formats</code> matrix is computed, not hand-written.</p>
+  </section>
+
+  <!-- 11 -->
+  <section class="slide">
+    <p class="eyebrow">06 &middot; The trap</p>
+    <h2>Not every tree fits in a table</h2>
+<pre><code><span class="c">// Fits in CSV: an array of flat objects</span>
+[{ "id": 1, "name": "Anna" }, { "id": 2, "name": "Boris" }]
+
+<span class="c">// Does not fit: nesting and heterogeneous keys</span>
+{ "user": { "name": "Anna", "tags": ["a", "b"] } }</code></pre>
+    <div class="cols cols--2">
+      <div class="card">
+        <h3>flatten: false &mdash; default</h3>
+        <p>The document is rejected with <code>NOT_TABULAR</code>. A permanent failure: the user gets a clear reason instead of a broken CSV.</p>
+      </div>
+      <div class="card">
+        <h3>flatten: true</h3>
+        <p>Nesting expands into dotted keys: <code>user.name</code>, <code>user.tags.0</code>.</p>
+      </div>
+    </div>
+    <p class="note"><strong>xml has its own conventions</strong> &mdash; <code>rootName</code>, <code>itemName</code>, <code>attributePrefix</code>, <code>textKey</code>. Without them <code>xml&nbsp;→&nbsp;json&nbsp;→&nbsp;xml</code> will not return the original, and that is the first thing a round-trip test checks.</p>
+  </section>
+
+  <!-- 12 -->
+  <section class="slide">
+    <p class="eyebrow">07 &middot; Storage</p>
+    <h2>Bytes never pass through Node at all</h2>
+    <ul class="points">
+      <li><span class="b">01</span><span>Upload is a presigned <code>PUT</code> in three steps: <code>POST /conversions</code> returns the URL, the client sends the file <strong>straight to MinIO</strong>, <code>POST /:id/uploaded</code> confirms the object with <code>headObject</code> and queues it.</span></li>
+      <li><span class="b">02</span><span>The signature pins the key, the type and a <strong>size ceiling</strong>. Lower for yaml and xml &mdash; they parse whole into memory.</span></li>
+      <li><span class="b">03</span><span>Download is a <code>302</code> to a presigned <code>GET</code> after the <code>job.user_id</code> check. The result key is computed by the gateway: a worker cannot write to the wrong place.</span></li>
+      <li><span class="b">04</span><span>The source is deleted after a successful conversion, the result at <code>expires_at</code>.</span></li>
+    </ul>
+  </section>
+
+  <!-- 13 -->
+  <section class="slide">
+    <p class="eyebrow">11 &middot; Security</p>
+    <h2>Parsing is an attack surface too</h2>
+    <div class="cols cols--2">
+      <div class="card card--key">
+        <h3>Parsers</h3>
+        <p>xml needs <strong>external entities disabled</strong> (XXE) and a depth limit. yaml needs a safe loader with no arbitrary tags. json needs a nesting limit. Those three are exactly where format converters get broken.</p>
+      </div>
+      <div class="card">
+        <h3>Worker isolation</h3>
+        <p>Non-root, read-only filesystem apart from the temp dir, dropped capabilities, no outbound network, CPU and memory limits, a per-job timeout.</p>
+      </div>
+      <div class="card">
+        <h3>Credentials</h3>
+        <p>argon2id, 15-minute access JWT, rotating refresh in an httpOnly cookie. The signature is verified <strong>locally in the gateway</strong>.</p>
+      </div>
+      <div class="card">
+        <h3>File intake</h3>
+        <p>Extension allow-list, signature verification, a size limit inside the signature itself. The filename never becomes a storage key &mdash; the key is the job UUID.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14 -->
+  <section class="slide">
+    <p class="eyebrow">14 &middot; Roadmap</p>
+    <h2>data-service comes first</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Phase</th><th>Content</th></tr></thead>
+        <tbody>
+          <tr><td class="svc">0</td><td>Monorepo, libs, compose stack, health checks across five services</td></tr>
+          <tr><td class="svc">1</td><td>identity-service and gateway auth, the RPC contract, e2e</td></tr>
+          <tr><td class="svc">2</td><td><strong>Happy path through data-service:</strong> job → presigned → queue → csv&nbsp;→&nbsp;json → download</td></tr>
+          <tr><td class="svc">3</td><td>The other 11 directions: parsers, serializers, <code>flatten</code>, xml conventions, round-trips</td></tr>
+          <tr><td class="svc">4</td><td><code>worker-kit</code> extracted, <code>image-service</code> built on it &mdash; proof the split is real</td></tr>
+          <tr><td class="svc">5</td><td>Reliability: retries and DLQ, outbox, idempotency, cancellation, TTL</td></tr>
+          <tr><td class="svc">6</td><td>notification-service: SSE, history, auth mail</td></tr>
+          <tr><td class="svc">7</td><td>Hardening: quotas, metrics, Testcontainers, CI, Swagger</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">The order is deliberate: <code>data-service</code> is the lightest, so the transport, the storage and the job model are all proven against a conversion you can write in an evening. By the time <code>image-service</code> appears, there is nothing left to get wrong.</p>
+  </section>
+
+  <!-- 15 -->
+  <section class="slide">
+    <p class="eyebrow">15 &middot; What needs deciding</p>
+    <h2>Open questions</h2>
+    <ol class="qs">
+      <li><span class="first">Which image directions?</span> The data side is fixed; images are not. Proposal: png, jpeg, webp, avif, tiff in all directions plus resize &mdash; on <code>sharp</code> that is as much work as a single direction.</li>
+      <li>Maximum file size and retention &mdash; 100&nbsp;MB and 24&nbsp;h are placeholders; yaml and xml need a lower limit.</li>
+      <li>Default <code>flatten</code>: reject a non-tabular document, or expand it with dotted keys?</li>
+      <li>Must a user verify their email before converting?</li>
+      <li>Is an admin surface in scope &mdash; all jobs, requeue, statistics?</li>
+      <li>Expected load target: it decides whether quorum queues and the outbox are necessary.</li>
+    </ol>
+  </section>
+
+</main>
+
+<script>
+  (function () {
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    var counter = document.getElementById('counter');
+    var dots = document.getElementById('dots');
+    var total = slides.length;
+    var current = 0;
+
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+    slides.forEach(function (s, i) {
+      var d = document.createElement('span');
+      d.className = 'dot' + (i === 0 ? ' on' : '');
+      dots.appendChild(d);
+    });
+    var dotEls = Array.prototype.slice.call(dots.children);
+
+    function render() {
+      counter.textContent = pad(current + 1) + ' / ' + pad(total);
+      dotEls.forEach(function (d, i) { d.classList.toggle('on', i === current); });
+    }
+    render();
+
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) {
+            var i = slides.indexOf(e.target);
+            if (i > -1 && i !== current) { current = i; render(); }
+          }
+        });
+      }, { threshold: 0.55 });
+      slides.forEach(function (s) { io.observe(s); });
+    }
+
+    function go(i) {
+      i = Math.max(0, Math.min(total - 1, i));
+      current = i;
+      slides[i].scrollIntoView({ block: 'start' });
+      render();
+    }
+
+    document.addEventListener('keydown', function (e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      switch (e.key) {
+        case 'ArrowRight': case 'ArrowDown': case 'PageDown': case ' ':
+          e.preventDefault(); go(current + 1); break;
+        case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
+          e.preventDefault(); go(current - 1); break;
+        case 'Home': e.preventDefault(); go(0); break;
+        case 'End': e.preventDefault(); go(total - 1); break;
+      }
+    });
+  })();
+</script>

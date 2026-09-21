@@ -1,0 +1,739 @@
+<title>Конвертер файлов — доклад</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap">
+
+<style>
+  :root {
+    --ground: #F1F4F3;
+    --surface: #FFFFFF;
+    --surface-2: #E7EDEB;
+    --ink: #131A1B;
+    --ink-2: #3C4A4B;
+    --muted: #667576;
+    --line: #D5DEDC;
+    --line-strong: #B6C3C0;
+    --accent: #0C6B60;
+    --accent-soft: #DCEDE9;
+    --signal: #96501E;
+    --signal-soft: #F4E6DA;
+    --code-bg: #EBF1EF;
+    --invert-bg: #101817;
+    --invert-fg: #EDF2F0;
+    --invert-accent: #5CCDBA;
+    --invert-muted: #8DA09D;
+
+    --serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F1415;
+      --surface: #161D1E;
+      --surface-2: #1C2525;
+      --ink: #E7EDEB;
+      --ink-2: #BFCBC9;
+      --muted: #8A9A99;
+      --line: #253030;
+      --line-strong: #384544;
+      --accent: #54C9B6;
+      --accent-soft: #10302C;
+      --signal: #E09A63;
+      --signal-soft: #30221A;
+      --code-bg: #111819;
+      --invert-bg: #060A0B;
+      --invert-fg: #E7EDEB;
+      --invert-accent: #54C9B6;
+      --invert-muted: #7F908E;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0F1415;
+    --surface: #161D1E;
+    --surface-2: #1C2525;
+    --ink: #E7EDEB;
+    --ink-2: #BFCBC9;
+    --muted: #8A9A99;
+    --line: #253030;
+    --line-strong: #384544;
+    --accent: #54C9B6;
+    --accent-soft: #10302C;
+    --signal: #E09A63;
+    --signal-soft: #30221A;
+    --code-bg: #111819;
+    --invert-bg: #060A0B;
+    --invert-fg: #E7EDEB;
+    --invert-accent: #54C9B6;
+    --invert-muted: #7F908E;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce) { body { scroll-behavior: auto; } }
+
+  .slide {
+    scroll-snap-align: start;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.9em;
+    padding: 4.5vh clamp(20px, 5vw, 76px) 7vh;
+    border-bottom: 1px solid var(--line);
+    font-size: clamp(12px, min(1.85vh, 2.5vw), 18px);
+    line-height: 1.5;
+  }
+
+  .slide--invert {
+    background: var(--invert-bg);
+    color: var(--invert-fg);
+    border-bottom: none;
+  }
+  .slide--invert .eyebrow { color: var(--invert-accent); }
+  .slide--invert .lede { color: var(--invert-muted); }
+  .slide--invert .k { color: var(--invert-accent); }
+  .slide--invert .chip { border-color: #2C3B39; background: rgba(255,255,255,0.04); color: var(--invert-fg); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72em;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 3.4em;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    margin: 0.1em 0 0;
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 2.15em;
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .lede { font-size: 1.15em; color: var(--ink-2); max-width: 48ch; margin: 0; }
+
+  p { margin: 0; max-width: 62ch; }
+  .k { color: var(--accent); font-weight: 600; }
+  strong { font-weight: 600; }
+
+  .cover-meta { display: flex; flex-wrap: wrap; gap: 0.5em; margin-top: 1.4em; }
+  .tag {
+    font-family: var(--mono);
+    font-size: 0.78em;
+    letter-spacing: 0.06em;
+    padding: 0.35em 0.8em;
+    border: 1px solid #2C3B39;
+    color: var(--invert-muted);
+  }
+  .cover-foot {
+    font-family: var(--mono);
+    font-size: 0.75em;
+    letter-spacing: 0.06em;
+    color: var(--invert-muted);
+    margin-top: 2.2em;
+  }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 1em; margin-top: 0.4em; }
+  .cols--2 { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+
+  .card {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 0.9em 1.05em;
+    display: flex;
+    flex-direction: column;
+    gap: 0.28em;
+  }
+  .card--key { border-color: var(--accent); background: var(--accent-soft); }
+  .card h3 { font-family: var(--mono); font-size: 0.85em; font-weight: 500; margin: 0; color: var(--ink); }
+  .card p { font-size: 0.86em; color: var(--ink-2); max-width: none; }
+  .card .stat {
+    font-family: var(--mono);
+    font-size: 0.7em;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-top: 0.2em;
+  }
+
+  .points { margin: 0.2em 0 0; padding: 0; list-style: none; display: grid; gap: 0.7em; max-width: 64ch; }
+  .points li { display: grid; grid-template-columns: 1.6em 1fr; gap: 0.6em; font-size: 0.96em; }
+  .points .b { font-family: var(--mono); font-size: 0.8em; color: var(--accent); padding-top: 0.25em; }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    line-height: 1.6;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    padding: 0.9em 1.1em;
+    overflow-x: auto;
+    margin: 0;
+  }
+  pre .c { color: var(--muted); }
+  code { font-family: var(--mono); font-size: 0.9em; background: var(--code-bg); padding: 0.05em 0.35em; border-radius: 3px; }
+  .slide--invert code { background: rgba(255,255,255,0.07); }
+
+  .scroll { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.83em; min-width: 460px; }
+  th, td { text-align: left; padding: 0.55em 0.85em; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 0.76em;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .svc { font-family: var(--mono); white-space: nowrap; }
+  .matrix td, .matrix th { text-align: center; font-family: var(--mono); }
+  .matrix td:first-child, .matrix th:first-child { text-align: left; }
+  .matrix .yes { color: var(--accent); font-weight: 500; }
+  .matrix .no { color: var(--line-strong); }
+
+  .diagram { overflow-x: auto; }
+  .diagram svg { width: 100%; min-width: 700px; height: auto; display: block; max-height: 60vh; }
+
+  .n-box { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.2; }
+  .n-key { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .n-mq { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1.4; }
+  .n-db { fill: none; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+  .n-t { font-family: var(--mono); font-size: 12px; fill: var(--ink); }
+  .n-s { font-family: var(--sans); font-size: 9.5px; fill: var(--muted); }
+  .n-dbt { font-family: var(--mono); font-size: 9px; fill: var(--muted); }
+  .e-cmd { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+  .e-evt { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 3; }
+  .e-out { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+  .e-l { font-family: var(--sans); font-size: 9.5px; fill: var(--muted); }
+  .e-la { font-family: var(--mono); font-size: 9px; fill: var(--accent); }
+  .e-lr { font-family: var(--sans); font-size: 9.5px; fill: var(--accent); }
+  .legend { font-family: var(--mono); font-size: 0.73em; letter-spacing: 0.04em; color: var(--muted); }
+
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45em; }
+  .chip {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    letter-spacing: 0.04em;
+    padding: 0.35em 0.65em;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .chip.ok { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .chip.bad { border-color: var(--signal); background: var(--signal-soft); color: var(--signal); }
+  .arr { font-family: var(--mono); color: var(--muted); font-size: 0.95em; }
+  .arr.txt { font-family: var(--sans); font-size: 0.85em; }
+  .note { font-size: 0.85em; color: var(--muted); max-width: 62ch; }
+
+  .ladder { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45em; font-family: var(--mono); font-size: 0.82em; }
+  .ladder .step { padding: 0.35em 0.65em; border: 1px solid var(--accent); color: var(--accent); }
+  .ladder .dlq { padding: 0.35em 0.65em; border: 1px solid var(--signal); background: var(--signal-soft); color: var(--signal); }
+
+  .qs { margin: 0; padding-left: 1.3em; display: grid; gap: 0.5em; max-width: 62ch; }
+  .qs li { font-size: 0.95em; }
+  .qs li::marker { font-family: var(--mono); font-size: 0.8em; color: var(--signal); }
+  .qs .first { color: var(--signal); font-weight: 600; }
+
+  .hud {
+    position: fixed;
+    right: clamp(12px, 2.5vw, 28px);
+    bottom: clamp(12px, 2.5vh, 24px);
+    display: flex;
+    align-items: center;
+    gap: 0.8em;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--ground) 86%, transparent);
+    border: 1px solid var(--line);
+    padding: 5px 10px;
+    z-index: 5;
+  }
+  .hud .dots { display: flex; gap: 4px; }
+  .hud .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); }
+  .hud .dot.on { background: var(--accent); }
+  .hud .hint { color: var(--muted); opacity: 0.75; }
+
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  @media print {
+    @page { size: A4 landscape; margin: 9mm; }
+    body { background: #fff; scroll-snap-type: none; }
+    .hud { display: none; }
+    .slide {
+      min-height: 0;
+      height: auto;
+      break-after: page;
+      page-break-after: always;
+      border-bottom: none;
+      padding: 0 0 6mm;
+      font-size: 10.5pt;
+      justify-content: flex-start;
+      gap: 3mm;
+    }
+    .slide:last-of-type { break-after: auto; page-break-after: auto; }
+    .slide--invert { background: #fff; color: #111; }
+    .slide--invert .eyebrow, .slide--invert .k { color: #0C6B60; }
+    .slide--invert .lede { color: #444; }
+    .slide--invert .tag { border-color: #bbb; color: #555; }
+    .slide--invert .cover-foot { color: #666; }
+    .diagram svg { max-height: none; min-width: 0; }
+    .scroll, pre, .card { break-inside: avoid; }
+  }
+</style>
+
+<div class="hud" role="status" aria-live="off">
+  <span class="dots" id="dots"></span>
+  <span id="counter">01 / 15</span>
+  <span class="hint">&larr; &rarr;</span>
+</div>
+
+<main id="deck">
+
+  <!-- 01 -->
+  <section class="slide slide--invert">
+    <p class="eyebrow">Предложение по архитектуре &middot; согласовано с ментором</p>
+    <h1>Бэкенд<br>конвертера файлов</h1>
+    <p class="lede">Пять сервисов NestJS в одном монорепозитории, очередь задач на RabbitMQ, S3-совместимое объектное хранилище.</p>
+    <div class="cover-meta">
+      <span class="tag">NestJS 11</span>
+      <span class="tag">Fastify</span>
+      <span class="tag">RabbitMQ</span>
+      <span class="tag">PostgreSQL &middot; TypeORM</span>
+      <span class="tag">MinIO / S3</span>
+    </div>
+    <p class="cover-foot">18.09.2026</p>
+  </section>
+
+  <!-- 02 -->
+  <section class="slide slide--invert">
+    <p class="eyebrow">01 &middot; Два несущих решения</p>
+    <h2>HTTP-запрос никогда<br>не выполняет конвертацию</h2>
+    <div class="flow" style="margin-top:0.7em">
+      <span class="chip">запись задачи</span><span class="arr">&rarr;</span>
+      <span class="chip">presigned URL</span><span class="arr">&rarr;</span>
+      <span class="chip">клиент льёт в S3</span><span class="arr">&rarr;</span>
+      <span class="chip"><span class="k">202</span></span><span class="arr">&rarr;</span>
+      <span class="chip">очередь</span><span class="arr">&rarr;</span>
+      <span class="chip">воркер</span>
+    </div>
+    <p class="lede" style="margin-top:0.7em">И второе, не менее важное: <span class="k">задачами владеет gateway, у воркеров нет своей БД.</span> Поэтому конвертеров может быть два, три или пять — модель данных от этого не меняется.</p>
+  </section>
+
+  <!-- 03 -->
+  <section class="slide">
+    <p class="eyebrow">02 &middot; Разбиение</p>
+    <h2>Пять сервисов</h2>
+    <div class="cols">
+      <div class="card">
+        <h3>api-gateway</h3>
+        <p>Единственная точка REST. JWT локально, presigned-ссылки, <strong>владеет задачами</strong>: создаёт, слушает результаты, пишет статус.</p>
+        <span class="stat">БД gateway</span>
+      </div>
+      <div class="card">
+        <h3>identity-service</h3>
+        <p>Регистрация, вход, JWT и refresh, подтверждение email, сброс пароля.</p>
+        <span class="stat">БД identity</span>
+      </div>
+      <div class="card card--key">
+        <h3>image-service</h3>
+        <p>Изображения на <code>sharp</code>. Лёгкий образ без внешних бинарников.</p>
+        <span class="stat">без БД &middot; CPU &middot; &times;N</span>
+      </div>
+      <div class="card card--key">
+        <h3>data-service</h3>
+        <p>csv, json, xml, yaml — все 12 направлений. Чистый Node.</p>
+        <span class="stat">без БД &middot; CPU &middot; &times;N</span>
+      </div>
+      <div class="card">
+        <h3>notification-service</h3>
+        <p>SSE-соединения браузеров, история уведомлений, auth-письма.</p>
+        <span class="stat">БД notification</span>
+      </div>
+    </div>
+    <p class="note">Второй конвертер в обсуждении назывался «текстовым». Здесь он <code>data-service</code>: он про структурированные текстовые форматы, а не про документы. <code>docx&nbsp;→&nbsp;pdf</code> станет третьим сервисом со своим образом.</p>
+  </section>
+
+  <!-- 04 -->
+  <section class="slide">
+    <p class="eyebrow">02 &middot; Обоснование</p>
+    <h2>Почему граница проходит здесь</h2>
+    <ul class="points">
+      <li><span class="b">01</span><span><strong>Между конвертерами — по весу образа, а не по домену.</strong> У <code>image-service</code> только <code>sharp</code>. Любой тяжёлый движок, который появится позже, добавит сотни мегабайт — и добавит их своему сервису, не задев остальные.</span></li>
+      <li><span class="b">02</span><span><strong>Аутентификация вынесена,</strong> чтобы gateway не был связан с таблицей пользователей.</span></li>
+      <li><span class="b">03</span><span><strong>Нотификации вынесены,</strong> потому что живое SSE-соединение — это память и счётчик коннектов, а не CPU.</span></li>
+      <li><span class="b">&mdash;</span><span><strong>Задача не может иметь двух владельцев.</strong> Список задач должен быть одним запросом с пагинацией, а не склейкой из двух источников — поэтому <code>conversion_jobs</code> в БД gateway, а воркеры в базу не ходят вообще.</span></li>
+    </ul>
+  </section>
+
+  <!-- 05 -->
+  <section class="slide">
+    <p class="eyebrow">02 &middot; Схема</p>
+    <h2>Потоки запросов, сообщений и байтов</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 420" role="img" aria-labelledby="dgt">
+        <title id="dgt">Потоки между пятью сервисами, брокером и объектным хранилищем</title>
+        <defs>
+          <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)"></path>
+          </marker>
+          <marker id="ar-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--muted)"></path>
+          </marker>
+        </defs>
+
+        <path class="e-cmd" d="M 70 176 C 220 30, 660 18, 884 124" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+        <text class="e-lr" x="450" y="22" text-anchor="middle">байты: PUT исходника и GET результата &mdash; напрямую, минуя Node</text>
+
+        <rect class="n-box" x="16" y="180" width="104" height="52" rx="5"></rect>
+        <text class="n-t" x="68" y="211" text-anchor="middle">Клиент</text>
+
+        <path class="e-cmd" d="M 124 206 L 164 206" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+        <text class="e-l" x="144" y="158" text-anchor="middle">HTTPS &middot; presigned URL</text>
+
+        <rect class="n-key" x="168" y="168" width="156" height="58" rx="5"></rect>
+        <text class="n-t" x="246" y="190" text-anchor="middle">api-gateway</text>
+        <text class="n-s" x="246" y="207" text-anchor="middle">REST &middot; JWT локально &middot; presigned</text>
+        <rect class="n-db" x="184" y="234" width="124" height="20" rx="3"></rect>
+        <text class="n-dbt" x="246" y="248" text-anchor="middle">gateway DB &middot; задачи</text>
+
+        <path class="e-cmd" d="M 326 196 L 388 196" marker-end="url(#ar-a)"></path>
+        <text class="e-la" x="357" y="158" text-anchor="middle">conversion.requested</text>
+        <path class="e-evt" d="M 388 216 L 328 216" marker-end="url(#ar-m)"></path>
+        <text class="e-l" x="357" y="236" text-anchor="middle">result.*</text>
+
+        <rect class="n-mq" x="392" y="166" width="136" height="76" rx="5"></rect>
+        <text class="n-t" x="460" y="194" text-anchor="middle">RabbitMQ</text>
+        <text class="n-s" x="460" y="211" text-anchor="middle">команды &middot; результаты</text>
+        <text class="n-s" x="460" y="226" text-anchor="middle">события &middot; DLX &middot; quorum</text>
+
+        <path class="e-cmd" d="M 530 182 L 560 182 L 560 122 L 592 122" marker-end="url(#ar-a)"></path>
+        <text class="e-la" x="596" y="88">convert.image</text>
+        <path class="e-cmd" d="M 530 198 L 592 198" marker-end="url(#ar-a)"></path>
+        <text class="e-la" x="596" y="164">convert.data</text>
+
+        <path class="e-evt" d="M 592 134 L 578 134 L 578 172 L 532 172" marker-end="url(#ar-m)"></path>
+        <path class="e-evt" d="M 592 212 L 532 212" marker-end="url(#ar-m)"></path>
+        <text class="e-l" x="534" y="232">result.completed / failed</text>
+
+        <rect class="n-key" x="596" y="96" width="172" height="52" rx="5"></rect>
+        <text class="n-t" x="682" y="118" text-anchor="middle">image-service</text>
+        <text class="n-s" x="682" y="134" text-anchor="middle">sharp &middot; &times;N &middot; без БД</text>
+
+        <rect class="n-key" x="596" y="172" width="172" height="52" rx="5"></rect>
+        <text class="n-t" x="682" y="194" text-anchor="middle">data-service</text>
+        <text class="n-s" x="682" y="210" text-anchor="middle">csv/json/xml/yaml &middot; без БД</text>
+
+        <path class="e-cmd" d="M 770 122 L 816 140" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+        <path class="e-cmd" d="M 770 198 L 816 176" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+        <rect class="n-box" x="820" y="130" width="140" height="56" rx="5"></rect>
+        <text class="n-t" x="890" y="152" text-anchor="middle">MinIO / S3</text>
+        <text class="n-s" x="890" y="168" text-anchor="middle">приватные бакеты</text>
+        <text class="e-l" x="890" y="202" text-anchor="middle">исходник / результат</text>
+
+        <path class="e-cmd" d="M 460 244 L 460 296" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+        <text class="e-l" x="450" y="268" text-anchor="end">login / refresh</text>
+        <text class="e-l" x="450" y="282" text-anchor="end">&mdash; редко, не на каждом запросе</text>
+        <rect class="n-box" x="392" y="300" width="136" height="46" rx="5"></rect>
+        <text class="n-t" x="460" y="328" text-anchor="middle">identity-service</text>
+        <rect class="n-db" x="414" y="352" width="92" height="20" rx="3"></rect>
+        <text class="n-dbt" x="460" y="366" text-anchor="middle">identity DB</text>
+
+        <path class="e-evt" d="M 505 244 L 505 270 L 682 270 L 682 296" marker-end="url(#ar-m)"></path>
+        <text class="e-la" x="570" y="264" text-anchor="middle">domain.events</text>
+        <rect class="n-key" x="596" y="300" width="172" height="52" rx="5"></rect>
+        <text class="n-t" x="682" y="322" text-anchor="middle">notification-service</text>
+        <text class="n-s" x="682" y="338" text-anchor="middle">SSE &middot; история &middot; письма</text>
+        <rect class="n-db" x="614" y="358" width="136" height="20" rx="3"></rect>
+        <text class="n-dbt" x="682" y="372" text-anchor="middle">notification DB</text>
+
+        <path class="e-out" d="M 770 326 L 816 326" marker-end="url(#ar-m)"></path>
+        <rect class="n-box" x="820" y="300" width="140" height="52" rx="5"></rect>
+        <text class="n-t" x="890" y="322" text-anchor="middle">SMTP</text>
+        <text class="n-s" x="890" y="338" text-anchor="middle">только auth-письма</text>
+
+        <path class="e-evt" d="M 596 340 L 570 340 L 570 400 L 40 400 L 40 234" marker-end="url(#ar-m)"></path>
+        <text class="e-l" x="300" y="393" text-anchor="middle">SSE &mdash; статус задачи в браузер</text>
+      </svg>
+    </div>
+    <p class="legend">Верхняя дуга — байты мимо Node &nbsp;&middot;&nbsp; нижняя — SSE &nbsp;&middot;&nbsp; у воркеров нет БД, у gateway есть</p>
+  </section>
+
+  <!-- 06 -->
+  <section class="slide">
+    <p class="eyebrow">03 &middot; Репозиторий</p>
+    <h2>Общее ядро воркера обязательно</h2>
+<pre><code>apps/
+  api-gateway/            <span class="c">// REST + владелец задач</span>
+  identity-service/       <span class="c">// RMQ request/response</span>
+  image-service/          <span class="c">// RMQ-консьюмер, sharp</span>
+  data-service/           <span class="c">// RMQ-консьюмер, csv/json/xml/yaml</span>
+  notification-service/   <span class="c">// SSE + история + SMTP</span>
+libs/
+  core/ contracts/ storage/ observability/
+  worker-kit/             <span class="c">// скачать → проверить → конвертировать → залить</span></code></pre>
+    <p class="note">Оба конвертера делают одно и то же и различаются <strong>только реестром конвертеров</strong>. Без <code>worker-kit</code> получатся два почти одинаковых сервиса — и это первое, за что зацепится ревьюер.</p>
+  </section>
+
+  <!-- 07 -->
+  <section class="slide">
+    <p class="eyebrow">04 &middot; Обмен сообщениями</p>
+    <h2>Три exchange с разными ролями</h2>
+    <div class="cols cols--2">
+      <div class="card card--key">
+        <h3>conversion.commands</h3>
+        <p><code>convert.image</code> и <code>convert.data</code> — две очереди, два деплоймента, два образа.</p>
+      </div>
+      <div class="card">
+        <h3>conversion.results</h3>
+        <p>Воркер отчитывается <code>result.completed</code>. Слушает только gateway.</p>
+      </div>
+      <div class="card">
+        <h3>domain.events</h3>
+        <p>Публичные события. У notification-service <strong>две очереди</strong>: общая под письма и эксклюзивная на реплику под SSE.</p>
+      </div>
+    </div>
+    <p class="note"><strong>Почему результат идёт через gateway.</strong> Публичное <code>conversion.completed</code> выпускается только <span class="k">после коммита состояния</span>. Иначе пользователь получит SSE «готово», дёрнет ссылку и поймает <code>409 NOT_READY</code>, потому что статус ещё не применён.</p>
+  </section>
+
+  <!-- 08 -->
+  <section class="slide">
+    <p class="eyebrow">04 &middot; Надёжность</p>
+    <h2>Гарантии доставки</h2>
+    <ul class="points">
+      <li><span class="b">01</span><span><strong>Одна задача за раз на воркер.</strong> <code>prefetchCount: 1</code>, ручной ack. Падение переотправляет ровно одну задачу.</span></li>
+      <li><span class="b">02</span><span><strong>Идемпотентность живёт в gateway.</strong> Воркер без БД не может проверить статус — зато повторный <code>result.completed</code> по завершённой задаче это no-op.</span></li>
+      <li><span class="b">03</span><span><strong>Transactional outbox</strong> в gateway и identity: строка состояния и строка outbox — одной транзакцией.</span></li>
+    </ul>
+    <div class="ladder" style="margin-top:0.4em">
+      <span class="step">попытка 1</span><span class="arr">&rarr;</span>
+      <span class="step">+10 с</span><span class="arr">&rarr;</span>
+      <span class="step">+60 с</span><span class="arr">&rarr;</span>
+      <span class="step">+300 с</span><span class="arr">&rarr;</span>
+      <span class="dlq">DLQ &middot; FAILED</span>
+    </div>
+    <p class="note">Permanent-ошибки — битый вход, неподдерживаемая пара, <code>NOT_TABULAR</code> — не тратят три попытки впустую.</p>
+  </section>
+
+  <!-- 09 -->
+  <section class="slide">
+    <p class="eyebrow">05 &middot; Пайплайн</p>
+    <h2>Статус пишет только gateway</h2>
+    <div class="flow">
+      <span class="chip">PENDING</span><span class="arr">&rarr;</span>
+      <span class="chip">QUEUED</span><span class="arr">&rarr;</span>
+      <span class="chip">PROCESSING</span><span class="arr">&rarr;</span>
+      <span class="chip ok">COMPLETED</span><span class="arr">&rarr;</span>
+      <span class="chip">EXPIRED</span>
+    </div>
+    <div class="flow">
+      <span class="arr">&#8627;</span>
+      <span class="chip">RETRYING</span><span class="arr">&#8617;</span>
+      <span class="arr">&middot;</span>
+      <span class="chip bad">FAILED</span>
+      <span class="arr">&middot;</span>
+      <span class="chip">CANCELLED</span>
+    </div>
+    <p class="note">Каждый переход пишет строку в <code>job_events</code> — журнал отвечает на вопрос «почему задача шла четыре минуты» без раскопок в логах.</p>
+    <p class="note"><strong>Воркер за всю обработку не делает ни одного запроса в БД.</strong> В команде уже есть всё: <code>sourceKey</code>, <code>resultKey</code>, форматы, опции. Тип файла он перепроверяет <span class="k">по сигнатуре</span>, а не по расширению.</p>
+  </section>
+
+  <!-- 10 -->
+  <section class="slide">
+    <p class="eyebrow">06 &middot; Данные</p>
+    <h2>12 направлений из 8 кусков кода</h2>
+    <div class="flow" style="margin:0.3em 0">
+      <span class="chip">csv</span><span class="chip">json</span><span class="chip">xml</span><span class="chip">yaml</span>
+      <span class="arr">&rarr; parse &rarr;</span>
+      <span class="chip ok">каноническая модель</span>
+      <span class="arr">&rarr; serialize &rarr;</span>
+      <span class="chip">csv</span><span class="chip">json</span><span class="chip">xml</span><span class="chip">yaml</span>
+    </div>
+    <p>Csv, json, xml и yaml — это разные представления одной структуры. Поэтому не 12 конвертеров, а <strong>4 парсера и 4 сериализатора</strong>.</p>
+    <p class="note">Пятый формат добавит сразу 8 новых направлений ценой двух кусков вместо восьми. И тестируется отдельно: парсер — на «прочитал правильно», сериализатор — на «записал правильно», без комбинаторного взрыва пар. Матрица в <code>GET /formats</code> считается, а не пишется руками.</p>
+  </section>
+
+  <!-- 11 -->
+  <section class="slide">
+    <p class="eyebrow">06 &middot; Подводный камень</p>
+    <h2>Не всякое дерево ложится в таблицу</h2>
+<pre><code><span class="c">// Ложится в CSV: массив плоских объектов</span>
+[{ "id": 1, "name": "Анна" }, { "id": 2, "name": "Борис" }]
+
+<span class="c">// Не ложится: вложенность и разнородные ключи</span>
+{ "user": { "name": "Анна", "tags": ["a", "b"] } }</code></pre>
+    <div class="cols cols--2">
+      <div class="card">
+        <h3>flatten: false &mdash; по умолчанию</h3>
+        <p>Документ отклоняется с <code>NOT_TABULAR</code>. Permanent-ошибка: пользователь получает внятную причину, а не битый CSV.</p>
+      </div>
+      <div class="card">
+        <h3>flatten: true</h3>
+        <p>Вложенность разворачивается в ключи через точку: <code>user.name</code>, <code>user.tags.0</code>.</p>
+      </div>
+    </div>
+    <p class="note"><strong>У xml свои конвенции</strong> — <code>rootName</code>, <code>itemName</code>, <code>attributePrefix</code>, <code>textKey</code>. Без них <code>xml&nbsp;→&nbsp;json&nbsp;→&nbsp;xml</code> не даст исходный документ, и это первое, что проверит round-trip тест.</p>
+  </section>
+
+  <!-- 12 -->
+  <section class="slide">
+    <p class="eyebrow">07 &middot; Хранилище</p>
+    <h2>Байты не проходят через Node вообще</h2>
+    <ul class="points">
+      <li><span class="b">01</span><span>Загрузка — presigned <code>PUT</code> в три шага: <code>POST /conversions</code> отдаёт ссылку, клиент льёт <strong>прямо в MinIO</strong>, <code>POST /:id/uploaded</code> проверяет объект через <code>headObject</code> и ставит в очередь.</span></li>
+      <li><span class="b">02</span><span>Подпись фиксирует ключ, тип и <strong>лимит размера</strong>. У yaml и xml он ниже — они разбираются целиком в память.</span></li>
+      <li><span class="b">03</span><span>Скачивание — <code>302</code> на presigned <code>GET</code> после проверки <code>job.user_id</code>. Ключ результата вычисляет gateway: воркер не может записать не туда.</span></li>
+      <li><span class="b">04</span><span>Исходник удаляется после успешной конвертации, результат — по <code>expires_at</code>.</span></li>
+    </ul>
+  </section>
+
+  <!-- 13 -->
+  <section class="slide">
+    <p class="eyebrow">11 &middot; Безопасность</p>
+    <h2>Разбор данных — это тоже атака</h2>
+    <div class="cols cols--2">
+      <div class="card card--key">
+        <h3>Парсеры</h3>
+        <p>xml — <strong>отключённые внешние сущности</strong> (XXE) и лимит глубины. yaml — безопасный загрузчик без произвольных тегов. json — лимит вложенности. Именно на этих трёх местах ломают конвертеры форматов.</p>
+      </div>
+      <div class="card">
+        <h3>Изоляция воркеров</h3>
+        <p>Non-root, read-only ФС кроме временного каталога, сброшенные capabilities, без сети наружу, лимиты CPU и памяти, таймаут на задачу.</p>
+      </div>
+      <div class="card">
+        <h3>Учётные данные</h3>
+        <p>argon2id, access JWT 15 мин, ротируемый refresh в httpOnly-cookie. Подпись проверяется <strong>локально в gateway</strong>.</p>
+      </div>
+      <div class="card">
+        <h3>Приём файлов</h3>
+        <p>Allow-list расширений, проверка по сигнатуре, лимит размера в самой подписи. Имя файла никогда не становится ключом — ключ это UUID задачи.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14 -->
+  <section class="slide">
+    <p class="eyebrow">14 &middot; План работ</p>
+    <h2>data-service идёт первым</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Фаза</th><th>Содержание</th></tr></thead>
+        <tbody>
+          <tr><td class="svc">0</td><td>Монорепозиторий, библиотеки, compose-стек, health-check'и на пяти сервисах</td></tr>
+          <tr><td class="svc">1</td><td>identity-service и аутентификация в gateway, RPC-контракт, e2e</td></tr>
+          <tr><td class="svc">2</td><td><strong>Happy path через data-service:</strong> задача → presigned → очередь → csv&nbsp;→&nbsp;json → скачивание</td></tr>
+          <tr><td class="svc">3</td><td>Остальные 11 направлений: парсеры, сериализаторы, <code>flatten</code>, конвенции xml, round-trip</td></tr>
+          <tr><td class="svc">4</td><td><code>worker-kit</code> выделяется, на нём поднимается <code>image-service</code> — проверка, что разделение настоящее</td></tr>
+          <tr><td class="svc">5</td><td>Надёжность: повторы и DLQ, outbox, идемпотентность, отмена, TTL</td></tr>
+          <tr><td class="svc">6</td><td>notification-service: SSE, история, auth-письма</td></tr>
+          <tr><td class="svc">7</td><td>Упрочнение: квоты, метрики, Testcontainers, CI, Swagger</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Порядок не случаен: <code>data-service</code> самый лёгкий, и весь транспорт, хранилище и модель задач проверяются на конвертации, которую можно написать за вечер. К моменту появления <code>image-service</code> ошибаться уже негде.</p>
+  </section>
+
+  <!-- 15 -->
+  <section class="slide">
+    <p class="eyebrow">15 &middot; Что нужно решить</p>
+    <h2>Открытые вопросы</h2>
+    <ol class="qs">
+      <li><span class="first">Какие направления у изображений?</span> Данные зафиксированы, картинки — нет. Предлагаю png, jpeg, webp, avif, tiff во всех направлениях плюс ресайз: на <code>sharp</code> это столько же работы, сколько одно направление.</li>
+      <li>Максимальный размер файла и срок хранения — 100&nbsp;МБ и 24&nbsp;ч пока заглушки; для yaml и xml лимит должен быть ниже.</li>
+      <li><code>flatten</code> по умолчанию: отклонять невыровненный документ или разворачивать через точку?</li>
+      <li>Обязательно ли подтверждение email до первой конвертации?</li>
+      <li>Входит ли в скоуп админский раздел — все задачи, переотправка, статистика?</li>
+      <li>Целевая нагрузка: от неё зависит, нужны ли quorum-очереди и outbox.</li>
+    </ol>
+  </section>
+
+</main>
+
+<script>
+  (function () {
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    var counter = document.getElementById('counter');
+    var dots = document.getElementById('dots');
+    var total = slides.length;
+    var current = 0;
+
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+    slides.forEach(function (s, i) {
+      var d = document.createElement('span');
+      d.className = 'dot' + (i === 0 ? ' on' : '');
+      dots.appendChild(d);
+    });
+    var dotEls = Array.prototype.slice.call(dots.children);
+
+    function render() {
+      counter.textContent = pad(current + 1) + ' / ' + pad(total);
+      dotEls.forEach(function (d, i) { d.classList.toggle('on', i === current); });
+    }
+    render();
+
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) {
+            var i = slides.indexOf(e.target);
+            if (i > -1 && i !== current) { current = i; render(); }
+          }
+        });
+      }, { threshold: 0.55 });
+      slides.forEach(function (s) { io.observe(s); });
+    }
+
+    function go(i) {
+      i = Math.max(0, Math.min(total - 1, i));
+      current = i;
+      slides[i].scrollIntoView({ block: 'start' });
+      render();
+    }
+
+    document.addEventListener('keydown', function (e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      switch (e.key) {
+        case 'ArrowRight': case 'ArrowDown': case 'PageDown': case ' ':
+          e.preventDefault(); go(current + 1); break;
+        case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
+          e.preventDefault(); go(current - 1); break;
+        case 'Home': e.preventDefault(); go(0); break;
+        case 'End': e.preventDefault(); go(total - 1); break;
+      }
+    });
+  })();
+</script>

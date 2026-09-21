@@ -1,0 +1,20 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "../../../",
+  "testEnvironment": "node",
+  "testRegex": "apps/api-gateway/test/.*\\.e2e-spec\\.ts$",
+  "setupFiles": ["<rootDir>/apps/api-gateway/test/setup-env.ts"],
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^@core$": "<rootDir>/libs/core/src",
+    "^@core/(.*)$": "<rootDir>/libs/core/src/$1",
+    "^@contracts$": "<rootDir>/libs/contracts/src",
+    "^@contracts/(.*)$": "<rootDir>/libs/contracts/src/$1",
+    "^@storage$": "<rootDir>/libs/storage/src",
+    "^@storage/(.*)$": "<rootDir>/libs/storage/src/$1",
+    "^@obs$": "<rootDir>/libs/observability/src",
+    "^@obs/(.*)$": "<rootDir>/libs/observability/src/$1"
+  }
+}

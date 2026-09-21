@@ -22,7 +22,14 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
-      "@/*": ["src/*"]
+      "@core": ["libs/core/src"],
+      "@core/*": ["libs/core/src/*"],
+      "@contracts": ["libs/contracts/src"],
+      "@contracts/*": ["libs/contracts/src/*"],
+      "@storage": ["libs/storage/src"],
+      "@storage/*": ["libs/storage/src/*"],
+      "@obs": ["libs/observability/src"],
+      "@obs/*": ["libs/observability/src/*"]
     }
   }
 }

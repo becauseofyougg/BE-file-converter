@@ -1,0 +1,1089 @@
+<title>Архитектура конвертера файлов</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap">
+
+<style>
+  :root {
+    --ground: #F1F4F3;
+    --surface: #FFFFFF;
+    --surface-2: #E7EDEB;
+    --ink: #131A1B;
+    --ink-2: #3C4A4B;
+    --muted: #667576;
+    --line: #D5DEDC;
+    --line-strong: #B6C3C0;
+    --accent: #0C6B60;
+    --accent-soft: #DCEDE9;
+    --signal: #96501E;
+    --signal-soft: #F4E6DA;
+    --code-bg: #EBF1EF;
+
+    --serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F1415;
+      --surface: #161D1E;
+      --surface-2: #1C2525;
+      --ink: #E7EDEB;
+      --ink-2: #BFCBC9;
+      --muted: #8A9A99;
+      --line: #253030;
+      --line-strong: #384544;
+      --accent: #54C9B6;
+      --accent-soft: #10302C;
+      --signal: #E09A63;
+      --signal-soft: #30221A;
+      --code-bg: #111819;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0F1415;
+    --surface: #161D1E;
+    --surface-2: #1C2525;
+    --ink: #E7EDEB;
+    --ink-2: #BFCBC9;
+    --muted: #8A9A99;
+    --line: #253030;
+    --line-strong: #384544;
+    --accent: #54C9B6;
+    --accent-soft: #10302C;
+    --signal: #E09A63;
+    --signal-soft: #30221A;
+    --code-bg: #111819;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.62;
+    padding-inline: 20px;
+    padding-block: 44px 72px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc { max-width: 860px; margin-inline: auto; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(30px, 6vw, 46px);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 10px 0 12px;
+  }
+
+  .standfirst {
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  .langbar {
+    margin-top: 18px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .langbar a { color: var(--accent); text-underline-offset: 3px; }
+
+  .meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin-block: 26px 8px;
+  }
+  .meta div { background: var(--surface); padding: 12px 14px; }
+  .meta dt {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 4px;
+  }
+  .meta dd { margin: 0; font-size: 14px; font-weight: 500; }
+
+  .toc { margin-block: 40px; border-top: 2px solid var(--ink); padding-top: 14px; }
+  .toc h2 { all: unset; display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .toc ol { list-style: none; margin: 12px 0 0; padding: 0; columns: 2; column-gap: 40px; }
+  .toc li { break-inside: avoid; font-size: 14px; padding-block: 2px; }
+  .toc a { color: var(--ink-2); text-decoration: none; }
+  .toc a:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .toc .n { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-right: 10px; }
+
+  section { margin-block: 52px; scroll-margin-top: 20px; }
+
+  h2:not(.toc h2) {
+    display: grid;
+    grid-template-columns: 3.1rem minmax(0, 1fr);
+    align-items: baseline;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(21px, 3.4vw, 27px);
+    line-height: 1.22;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  h2 .num { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+
+  h3 { font-family: var(--sans); font-weight: 600; font-size: 15px; letter-spacing: 0.01em; margin: 30px 0 8px; }
+
+  p { margin: 0 0 14px; max-width: 68ch; }
+  ul, ol.body-list { margin: 0 0 14px; padding-left: 20px; max-width: 68ch; }
+  li { margin-bottom: 7px; }
+  strong { font-weight: 600; }
+  em { font-style: italic; color: var(--ink-2); }
+  a { color: var(--accent); }
+
+  code { font-family: var(--mono); font-size: 0.87em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    padding: 16px 18px;
+    overflow-x: auto;
+    margin: 0 0 18px;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  pre .c { color: var(--muted); }
+
+  .scroll { overflow-x: auto; margin: 0 0 18px; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 520px; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td code { font-size: 12px; }
+  .svc { font-family: var(--mono); font-size: 12.5px; color: var(--ink); white-space: nowrap; }
+  .matrix td, .matrix th { text-align: center; font-family: var(--mono); font-size: 12px; }
+  .matrix td:first-child, .matrix th:first-child { text-align: left; }
+  .matrix .yes { color: var(--accent); font-weight: 500; }
+  .matrix .no { color: var(--line-strong); }
+
+  .rec { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 13px 16px; margin: 0 0 18px; }
+  .rec p { margin: 0; max-width: 64ch; }
+  .rec .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .open { border: 1px solid var(--signal); background: var(--signal-soft); padding: 18px 20px; }
+  section.open h2 { border-bottom-color: var(--signal); margin-bottom: 14px; }
+  section.open h2 .num { color: var(--signal); }
+  .open ol { margin: 0; padding-left: 22px; }
+  .open li::marker { font-family: var(--mono); font-size: 12px; color: var(--signal); }
+
+  figure { margin: 0 0 20px; }
+  .diagram { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); padding: 14px; }
+  .diagram svg { width: 100%; min-width: 760px; height: auto; display: block; }
+  figcaption { font-size: 12.5px; color: var(--muted); margin-top: 10px; max-width: 68ch; }
+
+  .n-box { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.2; }
+  .n-key { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .n-mq { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1.4; }
+  .n-db { fill: none; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+  .n-t { font-family: var(--mono); font-size: 12px; fill: var(--ink); }
+  .n-s { font-family: var(--sans); font-size: 9.5px; fill: var(--muted); }
+  .n-dbt { font-family: var(--mono); font-size: 9px; fill: var(--muted); }
+  .e-cmd { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+  .e-evt { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 3; }
+  .e-out { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+  .e-l { font-family: var(--sans); font-size: 9.5px; fill: var(--muted); }
+  .e-la { font-family: var(--mono); font-size: 9px; fill: var(--accent); }
+  .e-lr { font-family: var(--sans); font-size: 9.5px; fill: var(--accent); }
+
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .chip {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    padding: 4px 9px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .chip.ok { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .chip.bad { border-color: var(--signal); background: var(--signal-soft); color: var(--signal); }
+  .arr { font-family: var(--mono); color: var(--muted); font-size: 13px; }
+  .arr.txt { font-family: var(--sans); font-size: 12px; }
+
+  .phases { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .phases li { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr); gap: 0 14px; padding: 12px 0; border-bottom: 1px solid var(--line); margin: 0; }
+  .phases .ph { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); padding-top: 2px; }
+  .phases p { margin: 0; font-size: 14px; }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 16px;
+    border-top: 2px solid var(--ink);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+  }
+
+  @media (max-width: 620px) {
+    .toc ol { columns: 1; }
+    h2:not(.toc h2) { grid-template-columns: 2.5rem minmax(0, 1fr); }
+  }
+</style>
+
+<div class="doc">
+
+  <header>
+    <p class="eyebrow">Предложение по архитектуре &middot; согласовано с ментором</p>
+    <h1>Бэкенд конвертера файлов</h1>
+    <p class="standfirst">Пять сервисов NestJS в одном монорепозитории, очередь задач на RabbitMQ, S3-совместимое объектное хранилище. Несущее решение: <strong>HTTP-запрос никогда не выполняет конвертацию.</strong></p>
+
+    <p class="langbar">RU &middot; <a href="https://claude.ai/artifact/AB5xK4LvQBtMcCBMGfbeWJ">English version</a></p>
+
+    <dl class="meta">
+      <div><dt>Статус</dt><dd>Структура согласована</dd></div>
+      <div><dt>Дата</dt><dd>18.09.2026</dd></div>
+      <div><dt>Основа</dt><dd>NestJS 11 &middot; Fastify</dd></div>
+      <div><dt>Хранение</dt><dd>PostgreSQL &middot; TypeORM</dd></div>
+      <div><dt>Транспорт</dt><dd>RabbitMQ</dd></div>
+      <div><dt>Объекты</dt><dd>MinIO / S3</dd></div>
+    </dl>
+  </header>
+
+  <nav class="toc">
+    <h2>Содержание</h2>
+    <ol>
+      <li><span class="n">01</span><a href="#s1">Кратко</a></li>
+      <li><span class="n">02</span><a href="#s2">Разбиение на сервисы</a></li>
+      <li><span class="n">03</span><a href="#s3">Структура репозитория</a></li>
+      <li><span class="n">04</span><a href="#s4">Обмен сообщениями</a></li>
+      <li><span class="n">05</span><a href="#s5">Пайплайн конвертации</a></li>
+      <li><span class="n">06</span><a href="#s6">Конвертация данных</a></li>
+      <li><span class="n">07</span><a href="#s7">Хранилище</a></li>
+      <li><span class="n">08</span><a href="#s8">Модель данных</a></li>
+      <li><span class="n">09</span><a href="#s9">Публичный API</a></li>
+      <li><span class="n">10</span><a href="#s10">Валидация</a></li>
+      <li><span class="n">11</span><a href="#s11">Безопасность</a></li>
+      <li><span class="n">12</span><a href="#s12">Наблюдаемость и тесты</a></li>
+      <li><span class="n">13</span><a href="#s13">Локальный стек</a></li>
+      <li><span class="n">14</span><a href="#s14">План работ</a></li>
+      <li><span class="n">15</span><a href="#s15">Открытые вопросы</a></li>
+      <li><span class="n">&nbsp;A</span><a href="#sa">Как это выглядит в коде</a></li>
+    </ol>
+  </nav>
+
+  <section id="s1">
+    <h2><span class="num">01</span><span>Кратко</span></h2>
+    <p>Сервис принимает файл, асинхронно конвертирует его в другой формат и отдаёт результат. Gateway создаёт задачу и выдаёт presigned-ссылку, клиент льёт файл прямо в хранилище, команда уходит в очередь, её забирает воркер нужного семейства форматов.</p>
+    <p>Два решения держат на себе всю конструкцию:</p>
+    <ol class="body-list">
+      <li><strong>HTTP-запрос никогда не конвертирует.</strong> Это позволяет тяжёлому файлу и медленному движку сосуществовать, не удерживая соединение открытым, и даёт разбиению на микросервисы настоящий смысл, а не декоративный.</li>
+      <li><strong>Задачами владеет gateway, воркеры не имеют своей БД.</strong> Воркер — чистый вычислитель: получил команду, скачал, сконвертировал, залил, отчитался событием. Поэтому конвертеров может быть два, три или пять, и модель данных от этого не меняется.</li>
+    </ol>
+  </section>
+
+  <section id="s2">
+    <h2><span class="num">02</span><span>Разбиение на сервисы</span></h2>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Сервис</th><th>Ответственность</th><th>Владеет БД</th><th>Масштабируется по</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="svc">api-gateway</td>
+            <td>Единственная точка REST. Проверяет JWT локально, выдаёт presigned-ссылки, <strong>владеет задачами конвертации</strong>: создаёт их, слушает результаты воркеров и пишет статус. Rate limiting, квоты, OpenAPI.</td>
+            <td><code>gateway</code></td>
+            <td>конкурентности HTTP</td>
+          </tr>
+          <tr>
+            <td class="svc">identity-service</td>
+            <td>Регистрация, вход, выдача и обновление JWT, подтверждение email, сброс пароля, профиль.</td>
+            <td><code>identity</code></td>
+            <td>низко</td>
+          </tr>
+          <tr>
+            <td class="svc">image-service</td>
+            <td>Конвертация изображений на <code>sharp</code>. Stateless, N реплик, лёгкий образ без внешних бинарников.</td>
+            <td>&mdash;</td>
+            <td><strong>CPU</strong></td>
+          </tr>
+          <tr>
+            <td class="svc">data-service</td>
+            <td>Конвертация структурированных данных: csv, json, xml, yaml — все 12 направлений. Stateless, N реплик, чистый Node.</td>
+            <td>&mdash;</td>
+            <td><strong>CPU</strong></td>
+          </tr>
+          <tr>
+            <td class="svc">notification-service</td>
+            <td>Доставка уведомлений: держит SSE-соединения браузеров и пушит статус задач, ведёт историю, отправляет auth-письма по SMTP.</td>
+            <td><code>notification</code></td>
+            <td>числу живых соединений</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><em>Про имя.</em> В обсуждении второй конвертер назывался «текстовым». Здесь он называется <code>data-service</code>, потому что работает со структурированными текстовыми форматами, а не с документами: если позже появятся <code>docx &rarr; pdf</code>, это будет третий сервис со своим образом и своей очередью, а не расширение этого.</p>
+
+    <h3>Почему граница проходит именно здесь</h3>
+    <ul>
+      <li><strong>Между конвертерами — по ресурсам образа, а не по домену.</strong> <code>image-service</code> несёт только <code>sharp</code>, и его образ лёгкий. Любой тяжёлый движок, который появится позже (LibreOffice, ffmpeg), добавит сотни мегабайт — и добавит их <em>своему</em> сервису, не задев остальные. Сорокаминутное видео не должно блокировать ресайз превью на 200&nbsp;мс, и разные очереди с разными деплойментами — единственный способ это гарантировать.</li>
+      <li><strong>Аутентификация вынесена,</strong> чтобы gateway не был связан с таблицей пользователей и чтобы получить чистый пример синхронного вызова поверх брокера.</li>
+      <li><strong>Нотификации вынесены,</strong> потому что живое SSE-соединение — это память и счётчик коннектов, а не CPU. Тысяча ждущих вкладок и тысяча REST-запросов в секунду нагружают процесс по-разному, и масштабировать их надо независимо.</li>
+    </ul>
+
+    <div class="rec">
+      <span class="tag">Ключевое следствие</span>
+      <p>Раз конвертеров несколько, у задачи не может быть двух владельцев: список задач пользователя должен быть <strong>одним запросом с пагинацией</strong>, а не склейкой из нескольких источников. Поэтому <code>conversion_jobs</code> живёт в БД gateway, а воркеры не ходят в базу вообще. Добавление третьего конвертера не требует ни одной миграции.</p>
+    </div>
+
+    <figure>
+      <div class="diagram">
+        <svg viewBox="0 0 980 420" role="img" aria-labelledby="diagtitle">
+          <title id="diagtitle">Поток запросов, сообщений и байтов между пятью сервисами, брокером и объектным хранилищем</title>
+          <defs>
+            <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)"></path>
+            </marker>
+            <marker id="ar-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--muted)"></path>
+            </marker>
+          </defs>
+
+          <!-- байты: клиент напрямую в хранилище и обратно -->
+          <path class="e-cmd" d="M 70 176 C 220 30, 660 18, 884 124" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+          <text class="e-lr" x="450" y="22" text-anchor="middle">байты: PUT исходника и GET результата &mdash; напрямую, минуя Node</text>
+
+          <!-- клиент -->
+          <rect class="n-box" x="16" y="180" width="104" height="52" rx="5"></rect>
+          <text class="n-t" x="68" y="211" text-anchor="middle">Клиент</text>
+
+          <path class="e-cmd" d="M 124 206 L 164 206" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+          <text class="e-l" x="144" y="158" text-anchor="middle">HTTPS &middot; presigned URL</text>
+
+          <!-- gateway -->
+          <rect class="n-key" x="168" y="168" width="156" height="58" rx="5"></rect>
+          <text class="n-t" x="246" y="190" text-anchor="middle">api-gateway</text>
+          <text class="n-s" x="246" y="207" text-anchor="middle">REST &middot; JWT локально &middot; presigned</text>
+          <rect class="n-db" x="184" y="234" width="124" height="20" rx="3"></rect>
+          <text class="n-dbt" x="246" y="248" text-anchor="middle">gateway DB &middot; задачи</text>
+
+          <!-- команда в брокер и результат обратно -->
+          <path class="e-cmd" d="M 326 196 L 388 196" marker-end="url(#ar-a)"></path>
+          <text class="e-la" x="357" y="158" text-anchor="middle">conversion.requested</text>
+          <path class="e-evt" d="M 388 216 L 328 216" marker-end="url(#ar-m)"></path>
+          <text class="e-l" x="357" y="236" text-anchor="middle">result.*</text>
+
+          <!-- брокер -->
+          <rect class="n-mq" x="392" y="166" width="136" height="76" rx="5"></rect>
+          <text class="n-t" x="460" y="194" text-anchor="middle">RabbitMQ</text>
+          <text class="n-s" x="460" y="211" text-anchor="middle">команды &middot; результаты</text>
+          <text class="n-s" x="460" y="226" text-anchor="middle">события &middot; DLX &middot; quorum</text>
+
+          <!-- команды воркерам -->
+          <path class="e-cmd" d="M 530 182 L 560 182 L 560 122 L 592 122" marker-end="url(#ar-a)"></path>
+          <text class="e-la" x="596" y="88">convert.image</text>
+          <path class="e-cmd" d="M 530 198 L 592 198" marker-end="url(#ar-a)"></path>
+          <text class="e-la" x="596" y="164">convert.data</text>
+
+          <!-- результаты обратно -->
+          <path class="e-evt" d="M 592 134 L 578 134 L 578 172 L 532 172" marker-end="url(#ar-m)"></path>
+          <path class="e-evt" d="M 592 212 L 532 212" marker-end="url(#ar-m)"></path>
+          <text class="e-l" x="534" y="232">result.completed / failed</text>
+
+          <!-- воркеры -->
+          <rect class="n-key" x="596" y="96" width="172" height="52" rx="5"></rect>
+          <text class="n-t" x="682" y="118" text-anchor="middle">image-service</text>
+          <text class="n-s" x="682" y="134" text-anchor="middle">sharp &middot; &times;N &middot; без БД</text>
+
+          <rect class="n-key" x="596" y="172" width="172" height="52" rx="5"></rect>
+          <text class="n-t" x="682" y="194" text-anchor="middle">data-service</text>
+          <text class="n-s" x="682" y="210" text-anchor="middle">csv/json/xml/yaml &middot; без БД</text>
+
+          <!-- воркеры читают и пишут хранилище -->
+          <path class="e-cmd" d="M 770 122 L 816 140" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+          <path class="e-cmd" d="M 770 198 L 816 176" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+          <rect class="n-box" x="820" y="130" width="140" height="56" rx="5"></rect>
+          <text class="n-t" x="890" y="152" text-anchor="middle">MinIO / S3</text>
+          <text class="n-s" x="890" y="168" text-anchor="middle">приватные бакеты</text>
+          <text class="e-l" x="890" y="202" text-anchor="middle">исходник / результат</text>
+
+          <!-- identity: request/response поверх брокера -->
+          <path class="e-cmd" d="M 460 244 L 460 296" marker-start="url(#ar-a)" marker-end="url(#ar-a)"></path>
+          <text class="e-l" x="450" y="268" text-anchor="end">login / refresh</text>
+          <text class="e-l" x="450" y="282" text-anchor="end">&mdash; редко, не на каждом запросе</text>
+          <rect class="n-box" x="392" y="300" width="136" height="46" rx="5"></rect>
+          <text class="n-t" x="460" y="328" text-anchor="middle">identity-service</text>
+          <rect class="n-db" x="414" y="352" width="92" height="20" rx="3"></rect>
+          <text class="n-dbt" x="460" y="366" text-anchor="middle">identity DB</text>
+
+          <!-- события в нотификации -->
+          <path class="e-evt" d="M 505 244 L 505 270 L 682 270 L 682 296" marker-end="url(#ar-m)"></path>
+          <text class="e-la" x="570" y="264" text-anchor="middle">domain.events</text>
+          <rect class="n-key" x="596" y="300" width="172" height="52" rx="5"></rect>
+          <text class="n-t" x="682" y="322" text-anchor="middle">notification-service</text>
+          <text class="n-s" x="682" y="338" text-anchor="middle">SSE &middot; история &middot; письма</text>
+          <rect class="n-db" x="614" y="358" width="136" height="20" rx="3"></rect>
+          <text class="n-dbt" x="682" y="372" text-anchor="middle">notification DB</text>
+
+          <path class="e-out" d="M 770 326 L 816 326" marker-end="url(#ar-m)"></path>
+          <rect class="n-box" x="820" y="300" width="140" height="52" rx="5"></rect>
+          <text class="n-t" x="890" y="322" text-anchor="middle">SMTP</text>
+          <text class="n-s" x="890" y="338" text-anchor="middle">только auth-письма</text>
+
+          <!-- SSE обратно в браузер -->
+          <path class="e-evt" d="M 596 340 L 570 340 L 570 400 L 40 400 L 40 234" marker-end="url(#ar-m)"></path>
+          <text class="e-l" x="300" y="393" text-anchor="middle">SSE &mdash; статус задачи в браузер</text>
+        </svg>
+      </div>
+      <figcaption>Сплошные бирюзовые — команды и синхронные вызовы, пунктирные — результаты, события и живые соединения. Верхняя дуга — путь самих байтов: клиент грузит исходник и забирает результат напрямую из хранилища. Нижняя — SSE. У клиента <strong>два публичных входа</strong>: короткие REST-запросы идут в gateway, долгое соединение за статусом — в notification-service. Обратите внимание: у воркеров нет БД, а у gateway она есть.</figcaption>
+    </figure>
+  </section>
+
+  <section id="s3">
+    <h2><span class="num">03</span><span>Структура репозитория</span></h2>
+    <p>Режим Nest monorepo, в текущем репозитории. Существующие модули <code>src/core/*</code> переезжают в <code>libs/core</code> и импортируются каждым приложением без изменений.</p>
+
+<pre><code>apps/
+  api-gateway/            <span class="c">// REST + владелец задач</span>
+  identity-service/       <span class="c">// RMQ-хендлеры, request/response</span>
+  image-service/          <span class="c">// RMQ-консьюмер, sharp</span>
+  data-service/           <span class="c">// RMQ-консьюмер, csv/json/xml/yaml</span>
+  notification-service/   <span class="c">// SSE + история + SMTP</span>
+libs/
+  core/                   <span class="c">// config, database, health, throttler (перенос из src/core)</span>
+  contracts/              <span class="c">// сообщения, payload'ы, схемы, коды ошибок, матрица форматов</span>
+  worker-kit/             <span class="c">// ОБЩЕЕ ядро воркера: скачать → проверить → конвертировать → залить</span>
+  storage/                <span class="c">// клиент S3: put, get stream, presign, delete</span>
+  observability/          <span class="c">// pino-логгер, correlation-id, метрики</span></code></pre>
+
+    <div class="rec">
+      <span class="tag">Почему worker-kit обязателен</span>
+      <p>Оба конвертера делают одно и то же: скачать из S3, проверить сигнатуру, сконвертировать, залить результат, отчитаться событием, убрать за собой временный каталог. Различается <strong>только реестр конвертеров</strong>. Без общей библиотеки получатся два почти одинаковых сервиса — и это первое, за что зацепится ревьюер. С ней <code>image-service</code> и <code>data-service</code> — это тонкая обвязка: свой набор провайдеров и имя очереди.</p>
+    </div>
+
+    <h3>Шаги перехода от текущего boilerplate</h3>
+    <ol class="body-list">
+      <li><code>nest-cli.json</code> &rarr; режим monorepo, записи <code>projects</code> для пяти приложений и пяти библиотек.</li>
+      <li><code>git mv src/core libs/core</code>; заготовки <code>src/modules/*</code> расходятся по приложениям.</li>
+      <li>Пути в <code>tsconfig.json</code>: <code>@core/*</code>, <code>@contracts/*</code>, <code>@worker-kit/*</code>, <code>@storage/*</code>.</li>
+      <li>Разделить <code>main.ts</code>: gateway сохраняет текущий bootstrap на Fastify (compression, cookies, CORS, validation pipe, transactional context); воркеры используют <code>NestFactory.createMicroservice</code> с <code>Transport.RMQ</code> плюс минимальный HTTP-listener только для <code>/health</code>.</li>
+      <li>Интерфейс <code>Config</code> расширяется под каждое приложение: воркеру не нужны ни SMTP-креды, ни строка подключения к БД — только RabbitMQ и S3.</li>
+      <li>Миграции есть только у трёх приложений с БД: gateway, identity, notification.</li>
+    </ol>
+  </section>
+
+  <section id="s4">
+    <h2><span class="num">04</span><span>Обмен сообщениями</span></h2>
+    <p>Транспорт — <code>@nestjs/microservices</code> поверх RabbitMQ. Три exchange, и роли у них разные.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Exchange</th><th>Тип</th><th>Routing key</th><th>Очередь</th><th>Консьюмер</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>conversion.commands</code></td><td>direct</td>
+            <td><code>convert.image</code><br><code>convert.data</code></td>
+            <td><code>conversion.jobs.image</code><br><code>conversion.jobs.data</code></td>
+            <td class="svc">image-service<br>data-service</td>
+          </tr>
+          <tr>
+            <td><code>conversion.results</code></td><td>direct</td>
+            <td><code>result.completed</code><br><code>result.failed</code></td>
+            <td><code>gateway.results</code></td>
+            <td class="svc">api-gateway</td>
+          </tr>
+          <tr>
+            <td><code>domain.events</code></td><td>topic</td>
+            <td><code>conversion.*</code>, <code>user.*</code></td>
+            <td><code>notifications.mail</code><br><code>notifications.sse.&lt;instance&gt;</code></td>
+            <td class="svc">notification-service</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Почему результат идёт через gateway, а не сразу к пользователю</h3>
+    <p>Воркер публикует <code>result.completed</code> — это <strong>внутренний</strong> факт: «файл сконвертирован, результат лежит по такому ключу». Gateway применяет его к своей таблице и только после коммита публикует уже <strong>публичное</strong> событие <code>conversion.completed</code> в <code>domain.events</code>, откуда его забирает notification-service и пушит в браузер.</p>
+    <p>Лишний хоп здесь окупается: если бы SSE пушился напрямую из события воркера, пользователь получил бы «готово», дёрнул бы ссылку на скачивание и с некоторой вероятностью получил <code>409 NOT_READY</code>, потому что gateway ещё не применил результат. Такой гонки просто нет, если наружу событие выпускает тот, кто владеет состоянием.</p>
+
+    <h3>Две очереди у notification-service</h3>
+    <p>Сервис подписывается на <code>domain.events</code> дважды, и очереди принципиально разные — перепутать их значит либо разослать письмо по числу реплик, либо не доставить статус в браузер:</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Очередь</th><th>Тип</th><th>Зачем</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>notifications.mail</code></td>
+            <td>общая, durable, конкурирующие консьюмеры</td>
+            <td>Письмо должно уйти <strong>ровно один раз</strong>, сколько бы реплик ни работало.</td>
+          </tr>
+          <tr>
+            <td><code>notifications.sse.&lt;instance&gt;</code></td>
+            <td>эксклюзивная, auto-delete, по одной на реплику</td>
+            <td>Событие получают <strong>все</strong> реплики, а пушит только та, что держит соединение этого пользователя. Не нужна ни sticky-маршрутизация, ни общий Redis.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Гарантии доставки</h3>
+    <ul>
+      <li><strong>Одна задача за раз на воркер.</strong> <code>noAck: false</code>, ручной ack, <code>prefetchCount: 1</code>. Падение переотправляет ровно одну задачу, а нагрузка расходится по фактической пропускной способности, а не round-robin.</li>
+      <li><strong>Durable quorum-очереди</strong>, persistent-сообщения, publisher confirms.</li>
+      <li><strong>Повторы с задержкой.</strong> Retryable-ошибка даёт nack без requeue и уводит сообщение в <code>conversion.retry.&lt;n&gt;</code> — очередь с <code>x-message-ttl</code> и DLX обратно в рабочую. Три попытки через 10&nbsp;с / 60&nbsp;с / 300&nbsp;с, затем <code>conversion.jobs.dlq</code> и статус <code>FAILED</code>.</li>
+      <li><strong>Идемпотентность.</strong> Id задачи выступает message id. Воркер без БД не может проверить статус, поэтому дедупликация живёт в gateway: повторный <code>result.completed</code> по уже завершённой задаче — no-op. Повторная конвертация того же файла безвредна: результат перезаписывается по тому же ключу.</li>
+      <li><strong>Transactional outbox</strong> в gateway и identity: строка состояния и строка outbox пишутся в одной <code>@Transactional()</code> (уже доступно через <code>typeorm-transactional</code>), relay публикует их отдельно. Без этого рано или поздно появится задача, о которой ни один воркер не узнал, или событие о транзакции, которая откатилась.</li>
+      <li><code>correlationId</code> едет в заголовках сообщения и попадает в логи каждого сервиса.</li>
+    </ul>
+  </section>
+
+  <section id="s5">
+    <h2><span class="num">05</span><span>Пайплайн конвертации</span></h2>
+
+    <h3>Машина состояний задачи</h3>
+    <div class="flow">
+      <span class="chip">PENDING</span><span class="arr">&rarr;</span>
+      <span class="chip">QUEUED</span><span class="arr">&rarr;</span>
+      <span class="chip">PROCESSING</span><span class="arr">&rarr;</span>
+      <span class="chip ok">COMPLETED</span><span class="arr">&rarr;</span>
+      <span class="chip">EXPIRED</span>
+    </div>
+    <div class="flow">
+      <span class="arr">&#8627;</span>
+      <span class="chip">RETRYING</span><span class="arr">&#8617; PROCESSING</span>
+      <span class="arr">&middot;</span>
+      <span class="chip bad">FAILED</span>
+      <span class="arr">&middot;</span>
+      <span class="chip">CANCELLED</span>
+      <span class="arr txt">&larr; из PENDING или QUEUED</span>
+    </div>
+    <p><strong>Все переходы пишет gateway</strong> — либо из своего HTTP-обработчика, либо применяя результат воркера. Каждый переход добавляет строку в <code>job_events</code>: этот журнал отвечает на вопрос «почему задача шла четыре минуты» без раскопок в логах.</p>
+
+    <h3>Алгоритм воркера</h3>
+    <p>Одинаковый для обоих конвертеров, живёт в <code>libs/worker-kit</code>:</p>
+    <ol class="body-list">
+      <li>Получить команду. В ней всё необходимое: <code>jobId</code>, <code>sourceKey</code>, <code>sourceFormat</code>, <code>targetFormat</code>, <code>options</code>, <code>resultKey</code>. В базу идти не нужно и некуда.</li>
+      <li>Стримом скачать исходный объект из S3 во временный каталог задачи.</li>
+      <li><strong>Перепроверить настоящий тип файла по сигнатуре</strong>, а не по расширению или <code>Content-Type</code> от клиента. Несовпадение — <code>INVALID_SOURCE</code>, без повторов.</li>
+      <li>Найти конвертер в реестре; если совпадения нет — <code>UNSUPPORTED_CONVERSION</code>, без повторов.</li>
+      <li>Запустить его с жёстким таймаутом и ограничением по памяти.</li>
+      <li>Стримом записать результат в S3 по ключу из команды, посчитать размер и чек-сумму.</li>
+      <li>Опубликовать <code>result.completed</code> и сделать ack; в <code>finally</code> удалить временный каталог.</li>
+    </ol>
+    <p>Ошибки делятся на <strong>retryable</strong> (таймаут хранилища, OOM, убитый воркер) и <strong>permanent</strong> (битый вход, неподдерживаемая пара форматов, слишком большой файл). Permanent-ошибки не тратят три попытки впустую.</p>
+
+    <h3>Реестр конвертеров</h3>
+    <p>Каждый движок реализует один интерфейс и сам себя регистрирует. Матрица, которую отдаёт <code>GET /formats</code>, строится из реестра — добавление формата это один провайдер и ноль изменений в остальном коде.</p>
+
+<pre><code>export interface Converter {
+  readonly id: string;              <span class="c">// 'sharp-image', 'data-tabular'</span>
+  supports(source: Format, target: Format): boolean;
+  capabilities(): ConversionPair[]; <span class="c">// питает GET /formats</span>
+  convert(input: ConversionInput, ctx: ConversionContext): Promise&lt;ConversionResult&gt;;
+}</code></pre>
+
+    <p><code>ConversionContext</code> несёт временный каталог, <code>AbortSignal</code> для таймаута, колбэк прогресса и логгер, уже привязанный к correlation id. Семейство формата больше не хранится в интерфейсе: его определяет сервис, который поднял этот реестр.</p>
+  </section>
+
+  <section id="s6">
+    <h2><span class="num">06</span><span>Конвертация данных</span></h2>
+
+    <p>Требуется 12 направлений между четырьмя форматами. <strong>Не 12 конвертеров.</strong> Csv, json, xml и yaml — это разные представления одной и той же структуры, поэтому правильная декомпозиция другая:</p>
+
+    <div class="flow">
+      <span class="chip">csv</span>
+      <span class="chip">json</span>
+      <span class="chip">xml</span>
+      <span class="chip">yaml</span>
+      <span class="arr">&rarr; parse &rarr;</span>
+      <span class="chip ok">каноническая модель</span>
+      <span class="arr">&rarr; serialize &rarr;</span>
+      <span class="chip">csv</span>
+      <span class="chip">json</span>
+      <span class="chip">xml</span>
+      <span class="chip">yaml</span>
+    </div>
+
+    <p><strong>4 парсера и 4 сериализатора — 8 кусков кода закрывают все 12 направлений.</strong> Пятый формат (скажем, toml) добавит сразу 8 новых направлений ценой двух новых кусков, а не восьми. И тестируется это тоже по отдельности: парсер проверяется на «прочитал ли правильно», сериализатор — на «записал ли правильно», без комбинаторного взрыва пар.</p>
+
+    <div class="scroll">
+      <table class="matrix">
+        <thead><tr><th>из \ в</th><th>csv</th><th>json</th><th>xml</th><th>yaml</th></tr></thead>
+        <tbody>
+          <tr><td>csv</td><td class="no">&mdash;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td></tr>
+          <tr><td>json</td><td class="yes">&#10003;*</td><td class="no">&mdash;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td></tr>
+          <tr><td>xml</td><td class="yes">&#10003;*</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="yes">&#10003;</td></tr>
+          <tr><td>yaml</td><td class="yes">&#10003;*</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Звёздочка: не всякое дерево ложится в таблицу</h3>
+    <p>Это главный подводный камень, и его стоит проговорить до начала работы. Csv — плоская таблица, а json, xml и yaml — деревья. В сторону дерева всё просто, обратно — нет:</p>
+
+<pre><code><span class="c">// Ложится в CSV: массив плоских объектов</span>
+[{ "id": 1, "name": "Анна" }, { "id": 2, "name": "Борис" }]
+
+<span class="c">// Не ложится: вложенность и разнородные ключи</span>
+{ "user": { "name": "Анна", "tags": ["a", "b"] } }</code></pre>
+
+    <p>Поведение задаётся опцией конвертации и описано в контракте:</p>
+    <ul>
+      <li><code>flatten: false</code> (по умолчанию) — документ, который не является массивом плоских объектов, отклоняется с <code>NOT_TABULAR</code>. Это <strong>permanent</strong>-ошибка: повторять её бессмысленно, и пользователь получает внятную причину, а не битый CSV.</li>
+      <li><code>flatten: true</code> — вложенность разворачивается в ключи через точку (<code>user.name</code>, <code>user.tags.0</code>), объединение колонок по всем записям, пропуски пустые.</li>
+    </ul>
+
+    <h3>Особенности XML</h3>
+    <p>У xml нет однозначного отображения на json, поэтому конвенции фиксируются в опциях и не меняются молча: <code>rootName</code> (корневой элемент, по умолчанию <code>root</code>), <code>itemName</code> (элемент для массива, по умолчанию <code>item</code>), <code>attributePrefix</code> (атрибуты как ключи с префиксом <code>@</code>), <code>textKey</code> (текстовое содержимое смешанного узла, по умолчанию <code>#text</code>). Без этих правил <code>xml &rarr; json &rarr; xml</code> не даст исходный документ, и это первое, что проверит тест на round-trip.</p>
+
+    <div class="rec">
+      <span class="tag">Что тестировать</span>
+      <p><strong>Round-trip на каждую пару, где он осмыслен:</strong> <code>json &rarr; yaml &rarr; json</code> и <code>json &rarr; xml &rarr; json</code> должны давать исходный документ. Плюс набор «злых» фикстур: csv с запятыми и переводами строк внутри кавычек, xml с атрибутами и смешанным содержимым, yaml с якорями и многострочными блоками, json глубиной 50 уровней, пустой файл, файл из одного BOM.</p>
+    </div>
+
+    <h3>Потоковость</h3>
+    <p>Каноническая модель для больших файлов целиком в памяти не помещается, поэтому парсеры и сериализаторы работают с потоком записей там, где формат это позволяет: csv (построчно) и json-массив (через потоковый парсер). Yaml и xml разбираются целиком — для них лимит размера входа ниже, и это отражено в квотах. Для учебного объёма (файлы до сотни мегабайт) этого достаточно; если понадобится больше, менять придётся только парсеры, а не контракт.</p>
+  </section>
+
+  <section id="s7">
+    <h2><span class="num">07</span><span>Хранилище</span></h2>
+    <ul>
+      <li>Два приватных бакета, <code>uploads/</code> и <code>results/</code>. <strong>Ни один объект никогда не доступен публично.</strong></li>
+      <li>Ключи вида <code>&lt;bucket&gt;/&lt;userId&gt;/&lt;jobId&gt;</code>: id пользователя в пути делает проверку владения дешёвой, а доступ к чужому файлу структурно невозможным.</li>
+      <li>Ключ результата вычисляет gateway и кладёт в команду — воркер не придумывает имена и не может записать не туда.</li>
+      <li>Жизненный цикл: исходник удаляется после успешной конвертации, результат — по <code>expires_at</code> (24&nbsp;ч по умолчанию) плановой задачей в gateway, которая же помечает записи <code>EXPIRED</code>.</li>
+    </ul>
+
+    <p><strong>Путь загрузки — presigned <code>PUT</code>, в три шага.</strong> Байты не проходят через Node ни разу:</p>
+    <ol class="body-list">
+      <li><code>POST /conversions</code> — gateway создаёт задачу в статусе <code>PENDING</code> и возвращает <code>jobId</code> вместе с presigned <code>PUT</code>-ссылкой, у которой уже зашиты ключ объекта, тип контента и <strong>лимит размера</strong>.</li>
+      <li>Клиент льёт файл <strong>прямо в MinIO</strong> по этой ссылке.</li>
+      <li><code>POST /conversions/:id/uploaded</code> — gateway делает <code>headObject</code>, убеждается, что объект есть и укладывается в лимит, переводит задачу в <code>QUEUED</code> и публикует команду.</li>
+    </ol>
+    <p>Скачивание симметрично: <code>302</code> на presigned <code>GET</code> со временем жизни около пяти минут, после проверки <code>job.user_id</code>. Итого Node выдаёт подписи и ничего не проксирует, поэтому размер файла перестаёт влиять на память и на время жизни HTTP-соединений.</p>
+  </section>
+
+  <section id="s8">
+    <h2><span class="num">08</span><span>Модель данных</span></h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>База</th><th>Таблицы</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="svc">gateway</td>
+            <td><code>conversion_jobs</code> (id, user_id, status, source_format, target_format, options jsonb, source_key, source_size, result_key, result_size, checksum, error_code, error_message, attempts, started_at, finished_at, expires_at, метки времени) &middot; <code>job_events</code> &middot; <code>outbox</code> &middot; <code>quotas</code></td>
+          </tr>
+          <tr>
+            <td class="svc">identity</td>
+            <td><code>users</code> (id, email unique citext, password_hash, role, email_verified_at, метки времени) &middot; <code>refresh_tokens</code> (user_id, token_hash, expires_at, revoked_at, user_agent, ip) &middot; <code>verification_tokens</code> &middot; <code>outbox</code></td>
+          </tr>
+          <tr>
+            <td class="svc">notification</td>
+            <td><code>notifications</code> (user_id, type, channel, status, payload jsonb, ref_id, read_at, attempts, sent_at, error) с ключом идемпотентности по (user_id, type, ref_id)</td>
+          </tr>
+          <tr>
+            <td class="svc">image-service<br>data-service</td>
+            <td><strong>нет БД</strong> — вся нужная информация приходит в команде</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Индексы, которые окупаются: <code>conversion_jobs (user_id, created_at DESC)</code> для списка задач, <code>(status, expires_at)</code> для задачи очистки и частичный индекс по нетерминальным статусам для метрики глубины очереди. В таблицах токенов хранятся хеши, а не сами токены.</p>
+  </section>
+
+  <section id="s9">
+    <h2><span class="num">09</span><span>Публичный API</span></h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Метод</th><th>Путь</th><th>Примечания</th></tr></thead>
+        <tbody>
+          <tr><td class="svc">POST</td><td><code>/auth/register</code></td><td>публикует <code>user.registered</code> &rarr; письмо с подтверждением</td></tr>
+          <tr><td class="svc">POST</td><td><code>/auth/login</code></td><td>access JWT в теле, refresh-токен в httpOnly-cookie</td></tr>
+          <tr><td class="svc">POST</td><td><code>/auth/refresh</code> &middot; <code>/auth/logout</code></td><td>ротация и отзыв</td></tr>
+          <tr><td class="svc">POST</td><td><code>/auth/verify-email</code> &middot; <code>/auth/forgot-password</code> &middot; <code>/auth/reset-password</code></td><td></td></tr>
+          <tr><td class="svc">GET&nbsp;/&nbsp;PATCH</td><td><code>/users/me</code></td><td></td></tr>
+          <tr><td class="svc">GET</td><td><code>/formats</code></td><td>матрица конвертаций: 12 направлений для данных плюс изображения</td></tr>
+          <tr><td class="svc">POST</td><td><code>/conversions</code></td><td><code>targetFormat</code> + опции &rarr; <strong>201</strong> <code>{ jobId, uploadUrl, expiresIn }</code></td></tr>
+          <tr><td class="svc">POST</td><td><code>/conversions/:id/uploaded</code></td><td>файл залит &rarr; <code>headObject</code>, <code>QUEUED</code>, публикация команды &rarr; <strong>202</strong></td></tr>
+          <tr><td class="svc">GET</td><td><code>/conversions</code></td><td>свои задачи, пагинация, фильтр по статусу — <strong>один запрос к одной таблице</strong></td></tr>
+          <tr><td class="svc">GET</td><td><code>/conversions/:id</code></td><td>статус, прогресс, ошибка</td></tr>
+          <tr><td class="svc">GET</td><td><code>/conversions/:id/download</code></td><td><code>302</code> на presigned URL</td></tr>
+          <tr><td class="svc">DELETE</td><td><code>/conversions/:id</code></td><td>отмена, если в очереди; удаление артефактов, если завершена</td></tr>
+          <tr><td class="svc">GET</td><td><code>/health</code> &middot; <code>/docs</code></td><td>liveness и readiness + Swagger</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Ошибки отдаются в одном конверте — <code>code</code>, <code>message</code>, <code>details</code>, <code>correlationId</code> — из глобального exception filter, чтобы клиент ветвился по стабильному коду, а не по тексту. Коды конвертации: <code>UNSUPPORTED_CONVERSION</code>, <code>INVALID_SOURCE</code>, <code>NOT_TABULAR</code>, <code>FILE_TOO_LARGE</code>, <code>CONVERSION_TIMEOUT</code>.</p>
+
+    <h3>Второй вход: notification-service</h3>
+    <p>Живое соединение не проходит через gateway — иначе оно висело бы на обоих сервисах сразу и память платилась бы дважды. На ingress это отдельный маршрут (или поддомен <code>events.</code>), а JWT проверяется тем же публичным ключом.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Метод</th><th>Путь</th><th>Примечания</th></tr></thead>
+        <tbody>
+          <tr><td class="svc">GET</td><td><code>/events</code></td><td>SSE-поток событий пользователя: смена статуса задач</td></tr>
+          <tr><td class="svc">GET</td><td><code>/notifications</code></td><td>история: что произошло, пока вкладка была закрыта</td></tr>
+          <tr><td class="svc">POST</td><td><code>/notifications/read</code></td><td>отметить прочитанными</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="s10">
+    <h2><span class="num">10</span><span>Валидация</span></h2>
+    <p>Задание допускает zod или Joi; в boilerplate уже подключены Joi (для env) и <code>ValidationPipe</code>.</p>
+    <div class="rec">
+      <span class="tag">Рекомендация</span>
+      <p><code>nestjs-zod</code> для HTTP-DTO и для payload'ов сообщений, Joi остаётся на валидации env. Одна схема в <code>libs/contracts</code> делает три дела: тип на этапе компиляции, проверка на HTTP-границе и проверка на стороне консьюмера — последнее важно, потому что сообщение от другого сервиса ровно настолько же недоверенное, как запрос из браузера. Плюс из неё генерируется схема OpenAPI, поэтому документация не может разойтись с валидацией.</p>
+    </div>
+    <p>Отдельно валидируются <strong>опции конвертации</strong>: <code>flatten</code>, <code>delimiter</code>, <code>rootName</code>, <code>attributePrefix</code> и прочее. Их схема зависит от целевого формата, поэтому в контракте это discriminated union по <code>targetFormat</code> — тогда нельзя прислать <code>rootName</code> для csv и получить молча проигнорированное поле.</p>
+  </section>
+
+  <section id="s11">
+    <h2><span class="num">11</span><span>Безопасность</span></h2>
+    <ul>
+      <li><strong>Учётные данные.</strong> argon2id для паролей. Короткоживущий access JWT (15 мин) и ротируемый refresh в httpOnly-cookie с <code>SameSite=Strict</code>; обнаружение повторного использования refresh-токена отзывает всё семейство.</li>
+      <li><strong>Проверка токена — локальная.</strong> Gateway не ходит в identity-service на каждый запрос: он проверяет подпись JWT своим ключом, без единого сетевого вызова на горячем пути. В identity он обращается только на <code>register</code>, <code>login</code>, <code>refresh</code> и сброс пароля.</li>
+      <li><strong>Авторизация.</strong> Любой запрос задач ограничен по <code>user_id</code> на уровне репозитория, а не проверкой, которую вызывающий может забыть. Роль <code>ADMIN</code> покрывает ops-эндпоинты.</li>
+      <li><strong>Приём файлов.</strong> Allow-list расширений, проверка по сигнатуре, жёсткий лимит размера в самой подписи, имя файла никогда не становится ключом в хранилище — ключ это UUID задачи.</li>
+      <li><strong>Разбор данных — это тоже атака.</strong> У парсеров свои дыры: xml требует <strong>отключённых внешних сущностей</strong> (XXE) и лимита глубины, yaml — безопасного загрузчика без произвольных тегов, json — лимита вложенности. Это не теория: именно на этих трёх местах ломают конвертеры форматов.</li>
+      <li><strong>Изоляция воркеров.</strong> Non-root, read-only корневая ФС кроме временного каталога, сброшенные capabilities, без сети наружу, лимиты CPU и памяти, таймаут на задачу.</li>
+      <li><strong>Rate limiting.</strong> <code>ThrottlerModule</code> глобально плюс персональная квота на <code>POST /conversions</code>: N задач в час, M одновременно, проверяется по таблице задач.</li>
+      <li>Секреты только из env; <code>.env.example</code> документирует каждый ключ.</li>
+    </ul>
+  </section>
+
+  <section id="s12">
+    <h2><span class="num">12</span><span>Наблюдаемость и тесты</span></h2>
+    <ul>
+      <li>Структурированные логи через <code>pino</code>; correlation id генерируется на границе и передаётся через заголовки RMQ в каждую строку логов воркера.</li>
+      <li>Liveness и readiness на каждый сервис через Terminus. У воркеров readiness проверяет брокер и хранилище — но не БД, которой у них нет.</li>
+      <li>Метрики Prometheus: глубина каждой очереди отдельно, длительность задачи по паре форматов, доля ошибок по коду, повторы. Глубина очереди — сигнал для автоскейлинга, и теперь их две.</li>
+      <li>Graceful shutdown: перестать читать очередь, докончить текущую задачу, выйти.</li>
+      <li><strong>Тесты.</strong> Парсеры и сериализаторы — unit-тестами на фикстурах, это дёшево и покрывает основную логику. Round-trip тесты на осмысленные пары. Интеграционные тесты на сервис против Testcontainers (Postgres + RabbitMQ + MinIO). Один end-to-end: загрузить настоящий csv и дождаться корректного json на скачивании.</li>
+      <li>CI прогоняет lint, unit, e2e и <code>docker build</code> каждого приложения на каждый PR.</li>
+    </ul>
+  </section>
+
+  <section id="s13">
+    <h2><span class="num">13</span><span>Локальный стек</span></h2>
+    <p>Один <code>docker compose up</code> поднимает PostgreSQL (три базы через init-скрипт — gateway, identity, notification), RabbitMQ с management UI, MinIO с init-контейнером <code>mc</code>, Mailhog для перехвата почты в разработке (аккаунт turboSMTP для работы не нужен) и пять сервисов. Оба конвертера масштабируются через <code>--scale</code> независимо друг от друга — это самый наглядный способ показать ментору, зачем их разделили.</p>
+  </section>
+
+  <section id="s14">
+    <h2><span class="num">14</span><span>План работ</span></h2>
+    <ol class="phases">
+      <li><span class="ph">Фаза 0</span><p>Перевод в monorepo, вынос библиотек, compose-стек, зелёные health-check'и на пяти сервисах.</p></li>
+      <li><span class="ph">Фаза 1</span><p>identity-service и аутентификация в gateway: регистрация, вход, refresh, подтверждение; RPC-контракт; e2e.</p></li>
+      <li><span class="ph">Фаза 2</span><p><strong>Happy path через data-service:</strong> задача → presigned-загрузка → очередь → csv&nbsp;→&nbsp;json → результат → скачивание. Это самый дешёвый способ прогнать весь пайплайн, потому что не нужны ни бинарники, ни тяжёлые фикстуры.</p></li>
+      <li><span class="ph">Фаза 3</span><p>Остальные 11 направлений: 4 парсера, 4 сериализатора, канонич­еская модель, <code>flatten</code>, конвенции xml, round-trip тесты.</p></li>
+      <li><span class="ph">Фаза 4</span><p><code>worker-kit</code> выделяется из data-service, на нём поднимается <code>image-service</code> со своей очередью и своим образом — проверка, что разделение настоящее.</p></li>
+      <li><span class="ph">Фаза 5</span><p>Надёжность: повторы и DLQ, outbox, идемпотентность, отмена, очистка по TTL.</p></li>
+      <li><span class="ph">Фаза 6</span><p>notification-service: SSE, история, auth-письма.</p></li>
+      <li><span class="ph">Фаза 7</span><p>Упрочнение: квоты, метрики, Testcontainers, CI, README и Swagger.</p></li>
+    </ol>
+    <p>Порядок не случаен: <code>data-service</code> идёт первым именно потому, что он самый лёгкий — весь транспорт, хранилище и модель задач проверяются на конвертации, которую можно написать за вечер. К моменту, когда появляется <code>image-service</code>, ошибаться уже негде.</p>
+  </section>
+
+  <section id="s15" class="open">
+    <h2><span class="num">15</span><span>Открытые вопросы</span></h2>
+    <ol>
+      <li><strong>Какие направления у изображений?</strong> Данные зафиксированы, картинки — нет. Предлагаю png, jpeg, webp, avif, tiff во всех направлениях плюс ресайз как опцию: на <code>sharp</code> это столько же работы, сколько одно направление.</li>
+      <li>Максимальный размер файла и срок хранения результата — 100&nbsp;МБ и 24&nbsp;ч пока заглушки. Для yaml и xml лимит должен быть ниже: они разбираются целиком в память.</li>
+      <li>Поведение <code>flatten</code> по умолчанию: отклонять невыровненный документ или разворачивать через точку? Сейчас в документе — отклонять.</li>
+      <li>Обязательно ли подтверждение email до первой конвертации?</li>
+      <li>Входит ли в скоуп админский раздел — все задачи, переотправка, статистика?</li>
+      <li>Целевая нагрузка: от неё зависит, нужны ли quorum-очереди и outbox или это избыточная инженерия.</li>
+    </ol>
+  </section>
+
+  <section id="sa">
+    <h2><span class="num">A</span><span>Как это выглядит в коде</span></h2>
+    <p>Скелеты ключевых мест. Обработка ошибок и логирование опущены, остальное настоящее.</p>
+
+    <h3>1. Gateway проверяет токен сам</h3>
+<pre><code><span class="c">// apps/api-gateway/src/modules/auth/jwt.strategy.ts</span>
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor(config: ConfigService) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      secretOrKey: config.get('JWT_PUBLIC_KEY'),
+      algorithms: ['RS256'],
+    });
+  }
+
+  <span class="c">// Ни одного сетевого вызова: подпись проверена локально.</span>
+  validate(payload: JwtPayload): AuthUser {
+    return { id: payload.sub, role: payload.role };
+  }
+}</code></pre>
+
+    <h3>2. Gateway создаёт задачу и подписывает загрузку</h3>
+<pre><code><span class="c">// apps/api-gateway/src/modules/conversions/conversions.service.ts</span>
+async create(userId: string, dto: CreateConversionDto) {
+  const job = await this.jobs.save(this.jobs.create({
+    userId,
+    status: JobStatus.PENDING,
+    sourceFormat: dto.sourceFormat,
+    targetFormat: dto.targetFormat,
+    options: dto.options,
+    sourceKey: `${userId}/${randomUUID()}`,
+    resultKey: `${userId}/${randomUUID()}.${dto.targetFormat}`,
+  }));
+
+  <span class="c">// Подпись фиксирует ключ, тип и предельный размер.</span>
+  const uploadUrl = await this.storage.presignPut({
+    bucket: Bucket.Uploads,
+    key: job.sourceKey,
+    contentType: dto.contentType,
+    maxBytes: limitFor(dto.sourceFormat),   <span class="c">// у yaml и xml он ниже</span>
+    expiresIn: 900,
+  });
+
+  return { jobId: job.id, uploadUrl, expiresIn: 900 };
+}
+
+@Transactional()                        <span class="c">// задача и outbox — одной транзакцией</span>
+async confirmUpload(userId: string, jobId: string) {
+  const job = await this.jobs.findOneByOrFail({ id: jobId, userId });
+  if (job.status !== JobStatus.PENDING) return { status: job.status };
+
+  const head = await this.storage.head(Bucket.Uploads, job.sourceKey);
+  if (!head) throw new BadRequestException('SOURCE_NOT_UPLOADED');
+
+  job.status = JobStatus.QUEUED;
+  job.sourceSize = head.size;
+  await this.jobs.save(job);
+
+  <span class="c">// Семейство определяет очередь — и это единственное место,</span>
+  <span class="c">// которое знает, что конвертеров несколько.</span>
+  await this.outbox.save({
+    exchange: 'conversion.commands',
+    routingKey: `convert.${familyOf(job.targetFormat)}`,   <span class="c">// image | data</span>
+    payload: {
+      jobId: job.id,
+      sourceKey: job.sourceKey,
+      resultKey: job.resultKey,
+      sourceFormat: job.sourceFormat,
+      targetFormat: job.targetFormat,
+      options: job.options,
+    },
+  });
+
+  return { status: job.status };
+}</code></pre>
+
+    <h3>3. Gateway применяет результат и только потом выпускает событие наружу</h3>
+<pre><code><span class="c">// apps/api-gateway/src/modules/conversions/results.consumer.ts</span>
+@EventPattern('result.completed')
+@Transactional()
+async onCompleted(@Payload() evt: ResultCompleted) {
+  const job = await this.jobs.findOneByOrFail({ id: evt.jobId });
+  if (isTerminal(job.status)) return;     <span class="c">// идемпотентность живёт здесь</span>
+
+  job.status = JobStatus.COMPLETED;
+  job.resultSize = evt.size;
+  job.checksum = evt.checksum;
+  job.finishedAt = new Date();
+  await this.jobs.save(job);
+
+  <span class="c">// Публичное событие выпускается ПОСЛЕ коммита состояния —</span>
+  <span class="c">// иначе клиент получит SSE «готово» раньше, чем ссылка начнёт работать.</span>
+  await this.outbox.save({
+    exchange: 'domain.events',
+    routingKey: 'conversion.completed',
+    payload: { jobId: job.id, userId: job.userId },
+  });
+
+  await this.storage.delete(Bucket.Uploads, job.sourceKey);   <span class="c">// исходник больше не нужен</span>
+}</code></pre>
+
+    <h3>4. Воркер: общее ядро, разные реестры</h3>
+<pre><code><span class="c">// libs/worker-kit/src/conversion.handler.ts — один на оба сервиса</span>
+async handle(msg: ConversionRequested, ctx: RmqContext) {
+  const channel = ctx.getChannelRef();
+  const raw = ctx.getMessage();
+  const dir = await mkdtemp(join(tmpdir(), `job-${msg.jobId}-`));
+
+  try {
+    const source = join(dir, 'source');
+    await pipeline(
+      await this.storage.getStream(Bucket.Uploads, msg.sourceKey),
+      createWriteStream(source),
+    );
+
+    const real = await sniffFormat(source);          <span class="c">// по сигнатуре, не по расширению</span>
+    if (real !== msg.sourceFormat) throw new PermanentError('INVALID_SOURCE');
+
+    const converter = this.registry.resolve(msg.sourceFormat, msg.targetFormat);
+    if (!converter) throw new PermanentError('UNSUPPORTED_CONVERSION');
+
+    const out = await converter.convert(
+      { path: source, options: msg.options },
+      { dir, signal: AbortSignal.timeout(JOB_TIMEOUT_MS), logger: this.logger },
+    );
+
+    await this.storage.put(Bucket.Results, msg.resultKey, createReadStream(out.path));
+
+    <span class="c">// Ни одного запроса в БД за всю обработку — её у воркера нет.</span>
+    await this.publisher.emit('result.completed', {
+      jobId: msg.jobId, size: out.size, checksum: out.checksum,
+    });
+
+    channel.ack(raw);
+  } catch (err) {
+    await this.failures.handle(msg, err, channel, raw);   <span class="c">// permanent → result.failed, иначе → DLX</span>
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}</code></pre>
+
+<pre><code><span class="c">// apps/data-service/src/main.ts — вся разница между сервисами здесь</span>
+const app = await NestFactory.createMicroservice&lt;MicroserviceOptions&gt;(DataModule, {
+  transport: Transport.RMQ,
+  options: {
+    urls: [process.env.RABBITMQ_URL],
+    queue: 'conversion.jobs.data',       <span class="c">// у image-service — conversion.jobs.image</span>
+    queueOptions: {
+      durable: true,
+      arguments: { 'x-queue-type': 'quorum', 'x-dead-letter-exchange': 'conversion.retry' },
+    },
+    noAck: false,
+    prefetchCount: 1,
+  },
+});</code></pre>
+
+    <h3>5. 12 направлений из 8 кусков</h3>
+<pre><code><span class="c">// apps/data-service/src/converters/data.converter.ts</span>
+export interface DataParser {
+  readonly format: DataFormat;
+  parse(input: Readable, opts: ParseOptions): Promise&lt;CanonicalDocument&gt;;
+}
+
+export interface DataSerializer {
+  readonly format: DataFormat;
+  serialize(doc: CanonicalDocument, opts: SerializeOptions): Readable;
+}
+
+@Injectable()
+export class DataConverter implements Converter {
+  readonly id = 'data-canonical';
+
+  constructor(
+    @Inject(PARSERS) private readonly parsers: DataParser[],
+    @Inject(SERIALIZERS) private readonly serializers: DataSerializer[],
+  ) {}
+
+  <span class="c">// Матрица — это декартово произведение минус тождественные пары.</span>
+  <span class="c">// 4 + 4 провайдера дают все 12 направлений.</span>
+  capabilities(): ConversionPair[] {
+    return this.parsers.flatMap((p) =&gt;
+      this.serializers
+        .filter((s) =&gt; s.format !== p.format)
+        .map((s) =&gt; ({ from: p.format, to: s.format })),
+    );
+  }
+
+  async convert(input: ConversionInput, ctx: ConversionContext) {
+    const parser = this.parsers.find((p) =&gt; p.format === input.sourceFormat)!;
+    const serializer = this.serializers.find((s) =&gt; s.format === input.targetFormat)!;
+
+    const doc = await parser.parse(createReadStream(input.path), input.options);
+
+    <span class="c">// Единственное место, где деревья встречаются с таблицами.</span>
+    if (serializer.format === DataFormat.Csv &amp;&amp; !doc.isTabular) {
+      if (!input.options.flatten) throw new PermanentError('NOT_TABULAR');
+      doc.flatten({ separator: '.' });
+    }
+
+    const out = join(ctx.dir, 'result');
+    await pipeline(serializer.serialize(doc, input.options), createWriteStream(out));
+    return { path: out, size: (await stat(out)).size };
+  }
+}</code></pre>
+    <p>Добавить toml — это <code>TomlParser</code>, <code>TomlSerializer</code> и две строки в провайдерах. Восемь новых направлений появятся в <code>GET /formats</code> сами, потому что матрица считается, а не пишется руками.</p>
+
+    <h3>6. Две очереди у notification-service</h3>
+<pre><code><span class="c">// apps/notification-service/src/main.ts</span>
+const app = await NestFactory.create(NotificationModule);   <span class="c">// HTTP: держит SSE</span>
+
+<span class="c">// (1) Письма — общая durable-очередь: письмо уходит ОДИН раз.</span>
+app.connectMicroservice&lt;MicroserviceOptions&gt;({
+  transport: Transport.RMQ,
+  options: {
+    urls: [process.env.RABBITMQ_URL],
+    queue: 'notifications.mail',
+    queueOptions: { durable: true },
+    noAck: false,
+  },
+});
+
+<span class="c">// (2) SSE — СВОЯ эксклюзивная очередь на каждую реплику.</span>
+app.connectMicroservice&lt;MicroserviceOptions&gt;({
+  transport: Transport.RMQ,
+  options: {
+    urls: [process.env.RABBITMQ_URL],
+    queue: `notifications.sse.${process.env.HOSTNAME}`,
+    queueOptions: { durable: false, exclusive: true, autoDelete: true },
+  },
+});</code></pre>
+    <p><code>ConnectionHub</code> внутри — это просто <code>Map&lt;userId, Subject&gt;</code>. Реплика, у которой нет соединения этого пользователя, тихо игнорирует событие, поэтому ни sticky-маршрутизация, ни общий Redis не нужны.</p>
+  </section>
+
+  <footer>
+    <span>Конвертер файлов &mdash; предложение по архитектуре</span>
+    <span>18.09.2026</span>
+    <span>NestJS 11 &middot; RabbitMQ &middot; PostgreSQL &middot; S3</span>
+  </footer>
+
+</div>
