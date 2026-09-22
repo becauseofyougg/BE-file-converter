@@ -89,6 +89,7 @@ describe('LoginService', () => {
         accessToken: 'access',
         refreshToken: 'refresh',
         accessTokenExpiresAt: new Date().toISOString(),
+        refreshTokenExpiresAt: new Date().toISOString(),
       }),
     } as unknown as jest.Mocked<TokensService>;
 
@@ -140,7 +141,6 @@ describe('LoginService', () => {
       expect(tokens.issuePair).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'user-1' }),
         ['USER', 'ADMIN'],
-        undefined,
       );
     });
 

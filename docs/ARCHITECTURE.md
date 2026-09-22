@@ -238,8 +238,11 @@ job; the API is designed so that change is additive (`POST /conversions/presign`
 **identity DB** — RBAC lives here too: `roles` · `permissions` · `grants` · `user_roles`, and a user
 holds *many* roles, so the single `role` column is gone ([RBAC.md](RBAC.md) §2) ·
 `users` (id, email `UNIQUE CITEXT`, password_hash, email_verified_at,
-created_at, updated_at) · `refresh_tokens` (id, user_id, token_hash, expires_at, revoked_at,
-user_agent, ip) · `verification_tokens` (id, user_id, type, token_hash, expires_at, used_at).
+created_at, updated_at, failed_login_attempts, locked_until) ·
+`verification_tokens` (id, user_id, type, token_hash, expires_at, used_at).
+
+There is deliberately **no** `refresh_tokens` table: refresh state may not be stored on the server
+([AUTHORIZATION.md §1](AUTHORIZATION.md)), so the refresh token is a self-contained JWT.
 
 **conversion DB** — `conversion_jobs` (id, user_id, status, source_format, target_format, options
 `jsonb`, source_key, source_size, result_key, result_size, checksum, error_code, error_message,
@@ -260,8 +263,9 @@ Token tables store **hashes**, never the raw token.
 | Method | Path | Notes |
 |---|---|---|
 | `POST` | `/auth/register` | → `user.registered` event → verification mail |
-| `POST` | `/auth/login` | access JWT in body, refresh token in httpOnly cookie |
-| `POST` | `/auth/refresh` · `/auth/logout` | rotation + revocation |
+| `POST` | `/auth/login` | both JWTs in httpOnly cookies; no token in the body |
+| `POST` | `/auth/refresh` | rotates the pair and re-reads the roles |
+| `POST` | `/auth/logout` | clears the cookies — there is nothing to revoke |
 | `POST` | `/auth/verify-email` · `/auth/forgot-password` · `/auth/reset-password` | |
 | `GET`/`PATCH` | `/users/me` | |
 | `GET` | `/formats` | conversion matrix, derived from the registry |
@@ -296,9 +300,9 @@ Worth a minute of discussion; either is defensible.
 
 ## 10. Security
 
-- **Passwords:** argon2id. **JWT:** short-lived access (15 min) + rotating refresh in an httpOnly,
-  `SameSite=Strict` cookie (the cookie plugin is already registered), refresh-token reuse detection
-  revokes the family.
+- **Passwords:** argon2id. **JWT:** short-lived access (15 min) + rotating refresh (30 days), both in
+  httpOnly `SameSite=Strict` cookies and signed with separate secrets. Nothing about a session is
+  stored, so there is no revocation — [AUTHORIZATION.md](AUTHORIZATION.md) is the whole of that trade.
 - **Authorization:** every job query is scoped by `user_id` at the repository level, not by a check the
   caller might forget; `ADMIN` role for the ops endpoints.
 - **File intake:** extension allow-list, magic-byte verification, hard size cap, filename sanitized and

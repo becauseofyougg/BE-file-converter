@@ -41,6 +41,24 @@ export interface HttpEdgeConfig {
    * Comma-separated CORS allow-list. Never `*`.
    */
   CORS_ORIGINS: string;
+
+  /**
+   * Session cookie attributes — docs/AUTHORIZATION.md §3. They are deployment
+   * facts, not code: the same build serves an API on the site's own domain and
+   * one on a separate origin, and only the second needs `SameSite=None`.
+   */
+  COOKIE_DOMAIN?: string;
+
+  /**
+   * `strict` unless the browser has to send the cookie across origins, which
+   * then requires `none` *and* `COOKIE_SECURE=true`. `SameSite` is the whole
+   * CSRF defence for a cookie-authenticated API, so loosening it is a decision,
+   * not a default.
+   */
+  COOKIE_SAMESITE?: 'lax' | 'strict' | 'none';
+
+  /** Defaults to true in production, false elsewhere, so http://localhost works. */
+  COOKIE_SECURE?: boolean;
 }
 
 /**

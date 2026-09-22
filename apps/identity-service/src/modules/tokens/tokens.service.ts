@@ -1,49 +1,49 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { TransactionHost } from '@nestjs-cls/transactional';
-import { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 import type { User } from '@prisma-clients/identity';
 
-import { ConfigService } from '@core/config/config.service';
-import type {
-  AccessTokenClaims,
-  TokenPair,
+import { ERROR_CODES } from '@contracts/errors/error-codes';
+import {
+  REFRESH_TOKEN_TYPE,
+  type AccessTokenClaims,
+  type RefreshTokenClaims,
+  type TokenPair,
 } from '@contracts/messages/identity.messages';
+import { ConfigService } from '@core/config/config.service';
+import { AppError } from '@core/errors/app-error';
 import { IdentityConfig } from '../../config/identity.config';
-import { PrismaService } from '../../database/prisma.service';
-
-const REFRESH_TOKEN_BYTES = 32;
 
 export interface SessionContext {
   userAgent?: string;
   ip?: string;
 }
 
+/**
+ * Issues and verifies the two tokens of a session.
+ *
+ * **Nothing is persisted.** docs/AUTHORIZATION.md §1 forbids a server-side
+ * record of a refresh token — no allowlist, no denylist, no `jti` table, no
+ * session row. A refresh token is therefore valid for its full lifetime and
+ * cannot be recalled; the consequences, and the two things that still limit
+ * the damage, are §5 of that document.
+ */
 @Injectable()
 export class TokensService {
+  private readonly logger = new Logger(TokensService.name);
+
   constructor(
-    private readonly txHost: TransactionHost<
-      TransactionalAdapterPrisma<PrismaService>
-    >,
     private readonly jwt: JwtService,
     private readonly config: ConfigService<IdentityConfig>,
   ) {}
 
-  private get db() {
-    return this.txHost.tx;
-  }
-
   /**
-   * A signed access token plus a fresh refresh family. Called on registration
-   * with confirmation off, on successful confirmation, and on login.
+   * A fresh pair. Called on registration with confirmation off, on successful
+   * confirmation, on login, and on every refresh — rotation is not a separate
+   * path, it is this one called again.
    */
-  async issuePair(
-    user: User,
-    roles: string[],
-    context: SessionContext = {},
-  ): Promise<TokenPair> {
+  async issuePair(user: User, roles: string[]): Promise<TokenPair> {
     // The roles are baked in, so the gateway needs no lookup per request. The
     // cost is that a revoked role keeps working until the token expires — see
     // docs/RBAC.md §1.3.1; `JWT_ACCESS_TTL` is the size of that window.
@@ -53,39 +53,76 @@ export class TokensService {
       jti: randomUUID(),
     } satisfies AccessTokenClaims);
 
-    const refreshToken = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
-
-    await this.db.refreshToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: hashRefreshToken(refreshToken),
-        familyId: randomUUID(),
-        expiresAt: this.refreshExpiry(),
-        revokedAt: null,
-        userAgent: context.userAgent?.slice(0, 255) ?? null,
-        ip: context.ip ?? null,
+    const refreshToken = await this.jwt.signAsync(
+      {
+        sub: user.id,
+        jti: randomUUID(),
+        typ: REFRESH_TOKEN_TYPE,
+      } satisfies RefreshTokenClaims,
+      {
+        secret: this.refreshSecret(),
+        expiresIn: `${this.refreshTtlDays()}d`,
       },
-    });
+    );
 
     return {
       accessToken,
       refreshToken,
       accessTokenExpiresAt: this.accessExpiry().toISOString(),
+      refreshTokenExpiresAt: this.refreshExpiry().toISOString(),
     };
   }
 
-  /** Every live token of a user, e.g. on password change. */
-  async revokeAllForUser(userId: string): Promise<void> {
-    await this.db.refreshToken.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+  /**
+   * Signature, expiry and type — the whole of it, because there is no stored
+   * state left to check against (§1.3.2 of the requirement is explicit that a
+   * refresh carries no further server-side verification).
+   */
+  async verifyRefresh(token: string): Promise<RefreshTokenClaims> {
+    let claims: RefreshTokenClaims;
+
+    try {
+      claims = await this.jwt.verifyAsync<RefreshTokenClaims>(token, {
+        secret: this.refreshSecret(),
+      });
+    } catch (error) {
+      this.logger.warn({
+        event: 'auth.refresh.rejected',
+        // The reason, never the token: a log aggregator is not a place to
+        // leave a credential that is good for the next thirty days.
+        reason:
+          error instanceof Error && error.name === 'TokenExpiredError'
+            ? 'expired'
+            : 'invalid',
+      });
+
+      throw refreshRejected();
+    }
+
+    // Belt and braces next to the separate secret: an access token presented
+    // here must not buy a new 30-day session.
+    if (claims.typ !== REFRESH_TOKEN_TYPE || !claims.sub) {
+      this.logger.warn({
+        event: 'auth.refresh.rejected',
+        reason: 'wrong_type',
+      });
+
+      throw refreshRejected();
+    }
+
+    return claims;
+  }
+
+  private refreshSecret(): string {
+    return this.config.get('JWT_REFRESH_SECRET');
+  }
+
+  private refreshTtlDays(): number {
+    return this.config.getNumber('REFRESH_TOKEN_TTL_DAYS');
   }
 
   private refreshExpiry(): Date {
-    const days = this.config.getNumber('REFRESH_TOKEN_TTL_DAYS');
-
-    return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+    return new Date(Date.now() + this.refreshTtlDays() * 24 * 60 * 60 * 1000);
   }
 
   private accessExpiry(): Date {
@@ -96,11 +133,16 @@ export class TokensService {
 }
 
 /**
- * The refresh token is random, so a plain digest is enough — there is no
- * low-entropy secret here for an attacker to grind offline.
+ * One answer for every way a refresh can fail. A client's only useful reaction
+ * is to log in again, and distinguishing "expired" from "forged" would tell
+ * someone probing with a stolen token which half of their guess was right.
  */
-export function hashRefreshToken(token: string): string {
-  return createHash('sha256').update(token, 'utf8').digest('hex');
+function refreshRejected(): AppError {
+  return new AppError(
+    ERROR_CODES.UNAUTHENTICATED,
+    'The session has expired; sign in again',
+    401,
+  );
 }
 
 /**

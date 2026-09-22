@@ -120,7 +120,7 @@ export class LoginService {
       return {
         status: 'authenticated',
         userId: user.id,
-        tokens: await this.issueSession(user, input.session),
+        tokens: await this.issueSession(user),
       };
     }
 
@@ -178,9 +178,9 @@ export class LoginService {
     return {
       status: 'authenticated',
       userId: user.id,
-      // The session belongs to whoever completed the challenge, so it records
-      // *that* device — a link opened on a phone signs the phone in.
-      tokens: await this.issueSession(user, input.session),
+      // The session belongs to whoever completed the challenge: a link opened
+      // on a phone signs the phone in.
+      tokens: await this.issueSession(user),
     };
   }
 
@@ -266,7 +266,7 @@ export class LoginService {
     };
   }
 
-  private async issueSession(user: User, session?: SessionContext) {
+  private async issueSession(user: User) {
     const roles = await this.userRoles.namesFor(user.id);
 
     this.logger.log({
@@ -275,7 +275,7 @@ export class LoginService {
       roles,
     });
 
-    return this.tokens.issuePair(user, roles, session);
+    return this.tokens.issuePair(user, roles);
   }
 
   private assertNotLocked(user: User): void {

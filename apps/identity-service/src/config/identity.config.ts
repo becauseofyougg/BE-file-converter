@@ -25,6 +25,15 @@ export interface IdentityConfig
   LOGIN_LOCKOUT_MINUTES?: number;
 
   JWT_SECRET: string;
+
+  /**
+   * A *second* secret, for refresh tokens only — docs/AUTHORIZATION.md §2.
+   * Sharing one key would make the two tokens differ by a payload field alone,
+   * and the gateway holds the access key in order to verify every request, so
+   * one leaked service would also be able to mint 30-day refresh tokens.
+   */
+  JWT_REFRESH_SECRET: string;
+
   JWT_ACCESS_TTL?: string;
   REFRESH_TOKEN_TTL_DAYS?: number;
 }
@@ -46,6 +55,13 @@ export const identityConfigSchema = Joi.object<IdentityConfig>({
   LOGIN_LOCKOUT_MINUTES: Joi.number().min(1).optional().default(15),
 
   JWT_SECRET: Joi.string().min(32).required(),
+  JWT_REFRESH_SECRET: Joi.string()
+    .min(32)
+    .required()
+    .invalid(Joi.ref('JWT_SECRET'))
+    .messages({
+      'any.invalid': 'JWT_REFRESH_SECRET must differ from JWT_SECRET',
+    }),
   JWT_ACCESS_TTL: Joi.string().optional().default('15m'),
   REFRESH_TOKEN_TTL_DAYS: Joi.number().optional().default(30),
 });

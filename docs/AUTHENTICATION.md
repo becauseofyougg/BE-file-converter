@@ -3,7 +3,7 @@
 **Status:** implemented — see §7 for where the code lives
 **Date:** 2026-09-22
 **Owning service:** `identity-service`, exposed through `api-gateway`
-**Related:** [REGISTRATION.md](REGISTRATION.md) · [RBAC.md](RBAC.md) · [NON-FUNCTIONAL-REQUIREMENTS.md](NON-FUNCTIONAL-REQUIREMENTS.md)
+**Related:** [AUTHORIZATION.md](AUTHORIZATION.md) · [REGISTRATION.md](REGISTRATION.md) · [RBAC.md](RBAC.md) · [NON-FUNCTIONAL-REQUIREMENTS.md](NON-FUNCTIONAL-REQUIREMENTS.md)
 
 ---
 
@@ -12,8 +12,8 @@
 Authenticate a user by email and password, optionally gated behind an emailed confirmation — the same
 administrator switch registration uses, applied to the login scenario (`AUTH_CONFIRM_LOGIN`).
 
-**Out of scope:** refresh rotation and logout. A refresh token is issued and stored, but nothing
-consumes it yet, so a session currently lasts exactly one access-token lifetime (§8).
+What happens to the session **after** it is issued — cookies, refresh, rotation, logout — is
+[AUTHORIZATION.md](AUTHORIZATION.md). This document ends the moment a token pair exists.
 
 ---
 
@@ -23,12 +23,15 @@ consumes it yet, so a session currently lasts exactly one access-token lifetime 
 { "email": "user@example.com", "password": "…" }
 ```
 
-**A — confirmation off:** `200`, access token in the body, refresh token in an httpOnly
-`SameSite=Strict` cookie.
+**A — confirmation off:** `200`, and the session in two httpOnly cookies —
+`access_token` and `refresh_token` ([AUTHORIZATION.md §3](AUTHORIZATION.md#3-cookies-and-what-a-request-looks-like)).
+Neither token appears in the body.
 
 ```jsonc
-{ "status": "authenticated", "userId": "…", "accessToken": "…", "accessTokenExpiresAt": "…" }
+{ "status": "authenticated", "userId": "…", "accessTokenExpiresAt": "…" }
 ```
+
+`accessTokenExpiresAt` is there so a client can refresh before a request fails rather than after.
 
 **B — confirmation on:** `202`, no tokens, and a challenge to complete.
 
@@ -140,13 +143,11 @@ cannot be cashed in after one.
 
 ## 8. Still open
 
-1. **No refresh and no logout.** `refresh_tokens` rows are written and never read, so a session ends
-   when the access token expires (15 minutes) and the user logs in again. This is the next thing to
-   build, and [RBAC.md §4](RBAC.md) depends on it too — refresh-token revocation is what would shrink
-   the window during which a revoked role keeps working.
-2. Mail templates belong to `notification-service`, which does not consume
+1. Mail templates belong to `notification-service`, which does not consume
    `user.login_confirmation_requested` yet. Identity publishes it; nothing renders it.
-3. The lockout is per account and stored on the row. Under a distributed attack the write contention
+2. The lockout is per account and stored on the row. Under a distributed attack the write contention
    is on one row per targeted account, which is fine; if login volume ever makes that hot, the counter
    belongs in Redis alongside the throttler.
-4. `AUTH_CONFIRM_PASSWORD_RESET` is still read but unacted on — password reset is not built.
+3. `AUTH_CONFIRM_PASSWORD_RESET` is still read but unacted on — password reset is not built.
+4. A lockout blocks a *login*, not a refresh — an already-open session survives one
+   ([AUTHORIZATION.md §4](AUTHORIZATION.md#4-post-authrefresh) says why that is deliberate).

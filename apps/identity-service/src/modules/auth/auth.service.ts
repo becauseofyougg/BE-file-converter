@@ -118,7 +118,7 @@ export class AuthService {
       return {
         status: 'registered',
         userId: user.id,
-        tokens: await this.tokens.issuePair(user, roles, input.session),
+        tokens: await this.tokens.issuePair(user, roles),
       };
     }
 
@@ -206,7 +206,6 @@ export class AuthService {
       tokens: await this.tokens.issuePair(
         user,
         await this.userRoles.namesFor(user.id),
-        input.session,
       ),
     };
   }

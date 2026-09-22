@@ -54,6 +54,34 @@ export const httpEdgeConfigSchema = {
       'any.invalid':
         'CORS_ORIGINS must be a non-empty comma-separated list and must not contain "*"',
     }),
+
+  COOKIE_DOMAIN: Joi.string().optional(),
+
+  COOKIE_SAMESITE: Joi.string()
+    .valid('lax', 'strict', 'none')
+    .optional()
+    .default('strict'),
+
+  /**
+   * Derived from `NODE_ENV` rather than defaulted to a constant: `true` would
+   * make every cookie silently vanish on http://localhost, and `false` would
+   * ship a production build that hands sessions to a plaintext connection.
+   */
+  COOKIE_SECURE: Joi.boolean()
+    .optional()
+    .when('COOKIE_SAMESITE', {
+      is: 'none',
+      // A browser drops a `SameSite=None` cookie that is not `Secure`, so
+      // there is exactly one workable value here. Unset takes it; an explicit
+      // `false` is a contradiction, and saying so at boot beats discovering it
+      // as "nobody can log in" some time after the deploy.
+      then: Joi.valid(true).default(true).messages({
+        'any.only': 'COOKIE_SECURE must be true when COOKIE_SAMESITE is "none"',
+      }),
+      otherwise: Joi.boolean().default(
+        (parent: { NODE_ENV?: string }) => parent.NODE_ENV === 'production',
+      ),
+    }),
 };
 
 export const jwtVerifyConfigSchema = {

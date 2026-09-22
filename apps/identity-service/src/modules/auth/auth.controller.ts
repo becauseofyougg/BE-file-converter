@@ -12,6 +12,7 @@ import {
   IDENTITY_PATTERNS,
   type ConfirmLoginResponse,
   type LoginResponse,
+  type RefreshResponse,
   type RegisterResponse,
   type ResendVerificationResponse,
   type VerifyEmailResponse,
@@ -25,6 +26,8 @@ import {
   ResendLoginConfirmationMessageDto,
 } from './dto/login.dto';
 import { LoginService } from './login.service';
+import { RefreshService } from './refresh.service';
+import { RefreshMessageDto } from './dto/refresh.dto';
 import { RegisterMessageDto } from './dto/register.dto';
 import {
   ResendVerificationMessageDto,
@@ -57,6 +60,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly login: LoginService,
+    private readonly refreshService: RefreshService,
   ) {}
 
   @MessagePattern(IDENTITY_PATTERNS.REGISTER)
@@ -130,6 +134,25 @@ export class AuthController {
         token: dto.token,
         correlationId: dto.correlationId ?? randomUUID(),
         session: { userAgent: dto.userAgent, ip: dto.ip },
+      }),
+    );
+  }
+
+  /**
+   * No `@Transactional()` and no outbox: refreshing writes nothing. It reads
+   * the account, re-reads its roles and signs two tokens — there is no
+   * server-side session to update, because docs/AUTHORIZATION.md §1 forbids
+   * one existing.
+   */
+  @MessagePattern(IDENTITY_PATTERNS.REFRESH)
+  async refresh(
+    @Payload(messageValidationPipe) dto: RefreshMessageDto,
+    @Ctx() context: RmqContext,
+  ): Promise<RefreshResponse> {
+    return settleRpc(context, () =>
+      this.refreshService.refresh({
+        refreshToken: dto.refreshToken,
+        correlationId: dto.correlationId ?? randomUUID(),
       }),
     );
   }
