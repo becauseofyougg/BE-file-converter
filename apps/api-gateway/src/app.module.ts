@@ -17,6 +17,7 @@ import { MessagingModule } from './messaging/messaging.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ConversionsModule } from './modules/conversions/conversions.module';
 import { FormatsModule } from './modules/formats/formats.module';
+import { RbacModule } from './modules/rbac/rbac.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -32,6 +33,8 @@ import { UsersModule } from './modules/users/users.module';
      * Application modules
      *
      */
+    // Before AuthModule, which registers the global guards that read its cache.
+    RbacModule,
     AuthModule,
     UsersModule,
     ConversionsModule,

@@ -20,6 +20,7 @@ import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { DOMAIN_EVENTS } from '@contracts/events/domain.events';
 import { AppError } from '@core/errors/app-error';
 import { OutboxService } from '../outbox/outbox.service';
+import { UserRolesService } from '../rbac/user-roles.service';
 import { TokensService } from '../tokens/tokens.service';
 import { UsersService, type User } from '../users/users.service';
 import { AuthService } from './auth.service';
@@ -53,6 +54,7 @@ describe('AuthService', () => {
   let tokens: jest.Mocked<TokensService>;
   let outbox: jest.Mocked<OutboxService>;
   let settings: jest.Mocked<AuthSettingsService>;
+  let userRoles: jest.Mocked<UserRolesService>;
   let service: AuthService;
 
   const challenge = {
@@ -108,6 +110,12 @@ describe('AuthService', () => {
       confirmationMethod: jest.fn().mockReturnValue('otp'),
     } as unknown as jest.Mocked<AuthSettingsService>;
 
+    userRoles = {
+      assignDefault: jest.fn().mockResolvedValue(['USER']),
+      namesFor: jest.fn().mockResolvedValue(['USER']),
+      replace: jest.fn(),
+    } as unknown as jest.Mocked<UserRolesService>;
+
     service = new AuthService(
       users,
       passwords,
@@ -115,6 +123,7 @@ describe('AuthService', () => {
       tokens,
       outbox,
       settings,
+      userRoles,
     );
   });
 

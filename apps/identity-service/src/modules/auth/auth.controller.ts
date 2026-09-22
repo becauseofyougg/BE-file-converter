@@ -14,8 +14,8 @@ import {
   type ResendVerificationResponse,
   type VerifyEmailResponse,
 } from '@contracts/messages/identity.messages';
-import { AppError } from '@core/errors/app-error';
 import { RpcAppExceptionFilter } from '@core/errors/rpc-app-exception.filter';
+import { settleRpc } from '@core/messaging/rmq-ack';
 import { AuthService } from './auth.service';
 import { RegisterMessageDto } from './dto/register.dto';
 import {
@@ -53,7 +53,7 @@ export class AuthController {
     @Payload(messageValidationPipe) dto: RegisterMessageDto,
     @Ctx() context: RmqContext,
   ): Promise<RegisterResponse> {
-    return this.settle(context, () =>
+    return settleRpc(context, () =>
       this.auth.register({
         email: dto.email,
         password: dto.password,
@@ -68,7 +68,7 @@ export class AuthController {
     @Payload(messageValidationPipe) dto: VerifyEmailMessageDto,
     @Ctx() context: RmqContext,
   ): Promise<VerifyEmailResponse> {
-    return this.settle(context, () =>
+    return settleRpc(context, () =>
       this.auth.verifyEmail({
         challengeId: dto.challengeId,
         code: dto.code,
@@ -84,44 +84,12 @@ export class AuthController {
     @Payload(messageValidationPipe) dto: ResendVerificationMessageDto,
     @Ctx() context: RmqContext,
   ): Promise<ResendVerificationResponse> {
-    return this.settle(context, () =>
+    return settleRpc(context, () =>
       this.auth.resendVerification({
         challengeId: dto.challengeId,
         email: dto.email,
         correlationId: dto.correlationId ?? randomUUID(),
       }),
     );
-  }
-
-  /**
-   * Ack on success and on a business refusal alike; leave the message unacked
-   * only when the handler blew up for an unexpected reason, where a redelivery
-   * has a real chance of succeeding.
-   */
-  private async settle<T>(
-    context: RmqContext,
-    handler: () => Promise<T>,
-  ): Promise<T> {
-    const channel = context.getChannelRef() as {
-      ack: (message: unknown) => void;
-    };
-    const message = context.getMessage();
-
-    try {
-      const result = await handler();
-
-      channel.ack(message);
-
-      return result;
-    } catch (error) {
-      // A rejected password or a wrong code will be rejected identically on
-      // every redelivery, so the message is done with: ack it and let the
-      // error travel back to the caller as the reply.
-      if (error instanceof AppError) {
-        channel.ack(message);
-      }
-
-      throw error;
-    }
   }
 }

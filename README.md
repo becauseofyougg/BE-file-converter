@@ -121,6 +121,33 @@ end of the migration SQL. `prisma migrate dev` does not know about them and will
 — keep them. One of them (`uq_verification_tokens_live`) is a correctness guarantee, not a performance
 tweak.
 
+## Authentication and authorisation
+
+Two global guards on the gateway, in order: `JwtAuthGuard` verifies the access token locally,
+`RbacGuard` decides against a cached RBAC config. Both are `APP_GUARD`, so **every route is
+authenticated unless it declares `@Public()`** — opt-out, so a new controller is protected by the fact
+that nobody did anything.
+
+```ts
+@Controller('conversions')
+export class ConversionsController {
+  @Post()
+  @Permissions('conversions@create')   // resource@action; several means all of them
+  create(@CurrentUser() user: RequestUser) { ... }
+}
+```
+
+Roles, permissions and grants live in the `identity` database and are editable through
+`/admin/rbac/*` **without a restart**: a change publishes `rbac.updated`, and every gateway replica
+reloads its cache. The rule itself is one pure function, [`decideAccess`](libs/core/src/rbac/rbac-policy.ts),
+shared by both services so they cannot disagree. It fails closed — an unknown permission, an unloaded
+config or a role nobody recognises all deny.
+
+Roles travel inside the access token, so a decision costs no I/O; the trade-off is that revoking a
+role takes effect only when the token expires. Full reasoning in [docs/RBAC.md](docs/RBAC.md).
+
+There is no seeded administrator — §8 of that document has the one-line SQL to promote the first one.
+
 ## Messaging
 
 Two interaction styles, deliberately kept distinct — the names live in `libs/contracts/messaging`:

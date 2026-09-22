@@ -56,6 +56,10 @@ export const httpEdgeConfigSchema = {
     }),
 };
 
+export const jwtVerifyConfigSchema = {
+  JWT_SECRET: Joi.string().min(32).required(),
+};
+
 export const throttlerConfigSchema = {
   THROTTLE_GLOBAL_TTL: Joi.number().optional().default(10000),
   THROTTLE_GLOBAL_LIMIT: Joi.number().optional().default(10),

@@ -26,6 +26,7 @@ import {
   EMAIL_RATE_LIMIT,
   EmailRateLimitGuard,
 } from './email-rate-limit.guard';
+import { Public } from './jwt-auth.guard';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -34,6 +35,9 @@ const EmailLimit = (limit: number, ttlMs: number) =>
   SetMetadata(EMAIL_RATE_LIMIT, { limit, ttlMs });
 
 @Controller('auth')
+// Registration and confirmation are how a caller *gets* a token, so they
+// cannot require one. The global JwtAuthGuard is opt-out for exactly this.
+@Public()
 @UseGuards(EmailRateLimitGuard)
 export class AuthController {
   constructor(private readonly auth: AuthService) {}

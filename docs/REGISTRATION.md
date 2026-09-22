@@ -328,7 +328,7 @@ addresses are masked in production logs.
 
 **JWT.** Access token 15 min, `HS256` with a secret from env (or `RS256` if other services must verify
 locally without calling identity); refresh token opaque and random, stored hashed, rotated on every use,
-with reuse detection revoking the whole family. Payload carries `sub`, `role`, `jti`, `exp` — no email,
+with reuse detection revoking the whole family. Payload carries `sub`, `roles`, `jti`, `exp` — no email,
 no personal data, since a JWT is signed but not secret.
 
 **Password storage.** `argon2id` via the `argon2` package (§10). Not bcrypt: its 72-byte input limit is a

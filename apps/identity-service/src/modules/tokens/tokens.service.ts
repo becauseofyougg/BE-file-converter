@@ -7,8 +7,10 @@ import { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-pr
 import type { User } from '@prisma-clients/identity';
 
 import { ConfigService } from '@core/config/config.service';
-import type { TokenPair } from '@contracts/messages/identity.messages';
-import { UserRole } from '@contracts/enums/conversion.enums';
+import type {
+  AccessTokenClaims,
+  TokenPair,
+} from '@contracts/messages/identity.messages';
 import { IdentityConfig } from '../../config/identity.config';
 import { PrismaService } from '../../database/prisma.service';
 
@@ -17,17 +19,6 @@ const REFRESH_TOKEN_BYTES = 32;
 export interface SessionContext {
   userAgent?: string;
   ip?: string;
-}
-
-/**
- * Claims carried by the access token. No email and no name: a JWT is signed,
- * not encrypted, so anything in here is readable by whoever holds it — and it
- * ends up in browser storage and in logs.
- */
-export interface AccessTokenClaims {
-  sub: string;
-  role: UserRole;
-  jti: string;
 }
 
 @Injectable()
@@ -50,13 +41,15 @@ export class TokensService {
    */
   async issuePair(
     user: User,
+    roles: string[],
     context: SessionContext = {},
   ): Promise<TokenPair> {
+    // The roles are baked in, so the gateway needs no lookup per request. The
+    // cost is that a revoked role keeps working until the token expires — see
+    // docs/RBAC.md §1.3.1; `JWT_ACCESS_TTL` is the size of that window.
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
-      // The column is a varchar, so Prisma types it as `string`; the narrow
-      // set lives in the contract, and only this service ever writes it.
-      role: user.role as UserRole,
+      roles,
       jti: randomUUID(),
     } satisfies AccessTokenClaims);
 

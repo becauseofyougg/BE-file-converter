@@ -19,6 +19,7 @@ import {
 } from '@contracts/messages/identity.messages';
 import { AppError } from '@core/errors/app-error';
 import { OutboxService } from '../outbox/outbox.service';
+import { UserRolesService } from '../rbac/user-roles.service';
 import { TokensService, type SessionContext } from '../tokens/tokens.service';
 import {
   UsersService,
@@ -66,6 +67,7 @@ export class AuthService {
     private readonly tokens: TokensService,
     private readonly outbox: OutboxService,
     private readonly settings: AuthSettingsService,
+    private readonly userRoles: UserRolesService,
   ) {}
 
   /**
@@ -96,6 +98,10 @@ export class AuthService {
       emailVerified: !confirmationRequired,
     });
 
+    // Inside the same transaction as the account: a user row with no roles can
+    // do nothing at all, so the two must never be separable.
+    const roles = await this.userRoles.assignDefault(user.id);
+
     if (!confirmationRequired) {
       await this.outbox.publish<UserRegisteredPayload>(
         DOMAIN_EVENTS.USER_REGISTERED,
@@ -112,7 +118,7 @@ export class AuthService {
       return {
         status: 'registered',
         userId: user.id,
-        tokens: await this.tokens.issuePair(user, input.session),
+        tokens: await this.tokens.issuePair(user, roles, input.session),
       };
     }
 
@@ -197,7 +203,11 @@ export class AuthService {
       // Signed in on the spot: the user just proved both the password (at
       // registration) and the address, so asking them to type it again buys
       // nothing.
-      tokens: await this.tokens.issuePair(user, input.session),
+      tokens: await this.tokens.issuePair(
+        user,
+        await this.userRoles.namesFor(user.id),
+        input.session,
+      ),
     };
   }
 

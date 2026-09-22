@@ -14,6 +14,11 @@ export const DOMAIN_EVENTS = {
    */
   USER_REGISTRATION_ATTEMPTED: 'user.registration_attempted',
   USER_EMAIL_VERIFIED: 'user.email_verified',
+  /**
+   * The RBAC config changed. Enforcement points hold a cached copy and reload
+   * on this — which is what makes a rule change apply without a restart.
+   */
+  RBAC_UPDATED: 'rbac.updated',
   USER_PASSWORD_RESET_REQUESTED: 'user.password_reset_requested',
   CONVERSION_COMPLETED: 'conversion.completed',
   CONVERSION_FAILED: 'conversion.failed',
@@ -48,6 +53,15 @@ export type UserVerificationResentPayload = UserRegisteredPayload;
 export interface UserRegistrationAttemptedPayload {
   userId: string;
   email: string;
+}
+
+export interface RbacUpdatedPayload {
+  /** The new config version, so a listener can skip a reload it already did. */
+  version: string;
+  /** What changed, for the audit trail. */
+  entity: 'role' | 'permission' | 'grant' | 'user_roles';
+  operation: 'create' | 'update' | 'delete';
+  actorUserId?: string;
 }
 
 export interface UserEmailVerifiedPayload {

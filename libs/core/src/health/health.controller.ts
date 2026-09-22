@@ -2,11 +2,15 @@ import { Controller, Get } from '@nestjs/common';
 import { HealthCheck } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
 
+import { Public } from '../auth/public.decorator';
 import { HealthService } from './health.service';
 import { ConfigService } from '../config/config.service';
 import { BaseConfig } from '../config/config.types';
 
 @Controller('health')
+// An orchestrator has no credentials; a probe that needed one would report the
+// service unhealthy for the wrong reason.
+@Public()
 // A probe is not traffic — throttling it takes the service out of the load
 // balancer exactly when it is under load.
 @SkipThrottle()
