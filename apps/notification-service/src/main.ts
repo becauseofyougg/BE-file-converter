@@ -5,10 +5,6 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { Logger } from 'nestjs-pino';
-import {
-  initializeTransactionalContext,
-  StorageDriver,
-} from 'typeorm-transactional';
 
 import { ConfigService } from '@core/config/config.service';
 import { EXCHANGES, QUEUES } from '@contracts/messaging/topology';
@@ -20,8 +16,6 @@ import { NotificationConfig } from './config/notification.config';
  * behind a queue and cannot fail a registration or a conversion.
  */
 async function bootstrap() {
-  initializeTransactionalContext({ storageDriver: StorageDriver.AUTO });
-
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter(),

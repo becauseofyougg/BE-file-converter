@@ -1,0 +1,22 @@
+// The `conversion` database. One schema per service — nobody else reads these
+// tables, which is what keeps the services independently deployable.
+//
+// No models yet: this service's persistence is still to be built. The schema
+// exists so the client, the migration directory and the scripts are already
+// wired, and the first model is a one-line change rather than a setup task.
+// The tables it will hold are sketched in docs/ARCHITECTURE.md §7.
+
+generator client {
+  provider = "prisma-client-js"
+  // Generated into node_modules so a bare import resolves the same from `src`
+  // and from the compiled output in `dist`, which a relative path would not.
+  output   = "../../../node_modules/@prisma-clients/conversion"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Read by the Prisma **CLI** only; the running service passes its own
+  // `DATABASE_URL` to the client constructor. Separate names because three
+  // schemas share one root `.env` during development.
+  url      = env("CONVERSION_DATABASE_URL")
+}

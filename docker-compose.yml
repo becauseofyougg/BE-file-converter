@@ -1,11 +1,9 @@
 name: file-converter
 
-x-postgres-credentials: &postgres-credentials
-  POSTGRES_HOST: postgres
-  POSTGRES_PORT: 5432
-  POSTGRES_USER: ${POSTGRES_USER:-postgres}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-  POSTGRES_MIGRATIONS_RUN: "true"
+x-database-defaults: &database-defaults
+  # Prisma connects by URL. Each service gets its own database — the full URL
+  # is set per service below, since the database name is the part that differs.
+  DATABASE_LOG_QUERIES: ${DATABASE_LOG_QUERIES:-false}
 
 x-s3-credentials: &s3-credentials
   S3_ENDPOINT: http://minio:9000
@@ -136,10 +134,10 @@ services:
       context: .
       dockerfile: docker/identity-service.Dockerfile
     environment:
-      <<: [*service-environment, *postgres-credentials]
+      <<: [*service-environment, *database-defaults]
       SERVICE_NAME: identity-service
       PORT: 3001
-      POSTGRES_DB: identity
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/identity
       JWT_SECRET: ${JWT_SECRET:-change-me-to-at-least-32-characters-long}
       AUTH_CONFIRM_REGISTRATION: ${AUTH_CONFIRM_REGISTRATION:-true}
       AUTH_CONFIRM_METHOD: ${AUTH_CONFIRM_METHOD:-otp}
@@ -160,10 +158,10 @@ services:
         # heavyweight engine lands (ffmpeg, libreoffice).
         CONVERTER_PACKAGES: ""
     environment:
-      <<: [*service-environment, *postgres-credentials, *s3-credentials]
+      <<: [*service-environment, *database-defaults, *s3-credentials]
       SERVICE_NAME: conversion-service
       PORT: 3002
-      POSTGRES_DB: conversion
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/conversion
       CONVERSION_FAMILY: ${CONVERSION_FAMILY:-image}
     depends_on:
       postgres:
@@ -180,10 +178,10 @@ services:
       context: .
       dockerfile: docker/notification-service.Dockerfile
     environment:
-      <<: [*service-environment, *postgres-credentials]
+      <<: [*service-environment, *database-defaults]
       SERVICE_NAME: notification-service
       PORT: 3003
-      POSTGRES_DB: notification
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/notification
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       SMTP_FROM: ${SMTP_FROM:-no-reply@file-converter.local}

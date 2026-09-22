@@ -1,0 +1,144 @@
+// The `identity` database. One schema per service — nobody else reads these
+// tables, which is what keeps the services independently deployable.
+//
+// See docs/REGISTRATION.md §7.
+
+generator client {
+  provider        = "prisma-client-js"
+  // Generated into node_modules so a bare import resolves the same from `src`
+  // and from the compiled output in `dist`, which a relative path would not.
+  output          = "../../../node_modules/@prisma-clients/identity"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+
+  // Read by the Prisma **CLI** only — migrations, studio, diff. The running
+  // service passes its own `DATABASE_URL` to the client constructor instead
+  // (see src/database/prisma.service.ts), because in a container that is the
+  // one variable compose sets.
+  //
+  // They are separate names on purpose: three schemas share one root `.env`
+  // during development, so a single `DATABASE_URL` would point the identity
+  // CLI at whichever database was configured last.
+  url = env("IDENTITY_DATABASE_URL")
+
+  extensions = [citext]
+}
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// citext, so the uniqueness the application promises is the uniqueness the
+  /// database enforces. Normalising in code alone leaves two paths to the same
+  /// account the moment one call site forgets to lower-case.
+  email String @unique(map: "uq_users_email") @db.Citext
+
+  /// argon2id, with its parameters encoded in the string. Never logged.
+  passwordHash String @map("password_hash")
+
+  role String @default("USER") @db.VarChar(16)
+
+  /// Null until the address is proven. Registration with confirmation off sets
+  /// it immediately — the only difference between the two modes, as far as
+  /// this table is concerned.
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  verificationTokens VerificationToken[]
+  refreshTokens      RefreshToken[]
+
+  @@map("users")
+}
+
+/// One row is one *challenge*: the thing a user is currently being asked to
+/// prove. Resending rotates the secret inside the same row rather than opening
+/// a second one, so the challengeId the client received at registration stays
+/// valid and there is never more than one live code per user and type.
+model VerificationToken {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type String @db.VarChar(32)
+
+  /// The opaque handle the client quotes back. Separate from `id` so the
+  /// primary key never travels, and non-guessable so it cannot be used to
+  /// probe for other people's challenges.
+  challengeId String @unique(map: "uq_verification_tokens_challenge_id") @default(uuid()) @map("challenge_id") @db.Uuid
+
+  /// SHA-256 hex of the code or link token — never the value itself.
+  tokenHash String @map("token_hash") @db.Char(64)
+
+  method String @db.VarChar(8)
+
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+
+  /// Wrong guesses against the current secret. Capped per challenge in the
+  /// database rather than by the IP throttler — an attacker rotating IPs would
+  /// otherwise have unlimited attempts at a six-digit code.
+  attempts    Int      @default(0)
+  resendCount Int      @default(0) @map("resend_count")
+  lastSentAt  DateTime @default(now()) @map("last_sent_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, type], map: "idx_verification_tokens_user_type")
+  // A magic link arrives as the secret alone, so the hash is the lookup key.
+  @@index([tokenHash], map: "idx_verification_tokens_hash")
+  @@map("verification_tokens")
+}
+
+/// An opaque, random refresh token — hashed, single use, rotated on every
+/// refresh. Opaque rather than a second JWT because the whole point is that it
+/// can be revoked, which a self-contained token cannot be.
+model RefreshToken {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String @unique(map: "uq_refresh_tokens_hash") @map("token_hash") @db.Char(64)
+
+  /// Links every token descended from one login, so a replayed token can
+  /// revoke the whole family rather than guess which holder is legitimate.
+  familyId String @map("family_id") @db.Uuid
+
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  userAgent String? @map("user_agent") @db.VarChar(255)
+  ip        String? @db.Inet
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([familyId], map: "idx_refresh_tokens_family")
+  @@map("refresh_tokens")
+}
+
+/// A domain event written in the same transaction as the state change it
+/// describes, and published to the broker afterwards by the relay. Publishing
+/// inline would mean either a broker call inside an open transaction or one
+/// after commit that is lost if the process dies in between.
+model OutboxMessage {
+  id            String   @id @default(uuid()) @db.Uuid
+  eventName     String   @map("event_name") @db.VarChar(64)
+  payload       Json
+  correlationId String   @map("correlation_id") @db.VarChar(64)
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz(6)
+
+  /// Null while the relay still owes the broker this message.
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+
+  attempts  Int      @default(0)
+  lastError String?  @map("last_error")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("outbox")
+}

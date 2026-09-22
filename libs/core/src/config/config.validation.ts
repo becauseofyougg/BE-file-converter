@@ -61,15 +61,11 @@ export const throttlerConfigSchema = {
   THROTTLE_GLOBAL_LIMIT: Joi.number().optional().default(10),
 };
 
-export const postgresConfigSchema = {
-  POSTGRES_HOST: Joi.string().hostname().required(),
-  POSTGRES_PORT: Joi.number().port().required(),
-  POSTGRES_USER: Joi.string().required(),
-  POSTGRES_PASSWORD: Joi.string().required(),
-  POSTGRES_DB: Joi.string().required(),
-  POSTGRES_SYNCHRONIZE: Joi.boolean().optional().default(false),
-  POSTGRES_LOGGING: Joi.boolean().optional().default(false),
-  POSTGRES_MIGRATIONS_RUN: Joi.boolean().optional().default(false),
+export const databaseConfigSchema = {
+  DATABASE_URL: Joi.string()
+    .uri({ scheme: ['postgresql', 'postgres'] })
+    .required(),
+  DATABASE_LOG_QUERIES: Joi.boolean().optional().default(false),
 };
 
 export const rabbitmqConfigSchema = {

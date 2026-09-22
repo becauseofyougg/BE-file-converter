@@ -5,6 +5,14 @@
  */
 export const DOMAIN_EVENTS = {
   USER_REGISTERED: 'user.registered',
+  /** A confirmation was sent again for an account that already exists. */
+  USER_VERIFICATION_RESENT: 'user.verification_resent',
+  /**
+   * Someone submitted the registration form for an address that is already
+   * verified. The owner is told; the submitter learns nothing — which is what
+   * lets the endpoint answer identically either way.
+   */
+  USER_REGISTRATION_ATTEMPTED: 'user.registration_attempted',
   USER_EMAIL_VERIFIED: 'user.email_verified',
   USER_PASSWORD_RESET_REQUESTED: 'user.password_reset_requested',
   CONVERSION_COMPLETED: 'conversion.completed',
@@ -32,6 +40,14 @@ export interface UserRegisteredPayload {
     secret: string;
     expiresAt: string;
   };
+}
+
+/** Same shape as a registration send — the mail differs, the data does not. */
+export type UserVerificationResentPayload = UserRegisteredPayload;
+
+export interface UserRegistrationAttemptedPayload {
+  userId: string;
+  email: string;
 }
 
 export interface UserEmailVerifiedPayload {

@@ -7,12 +7,9 @@ import {
 import compression from '@fastify/compress';
 import fastifyCookie from '@fastify/cookie';
 import { Logger } from 'nestjs-pino';
-import {
-  initializeTransactionalContext,
-  StorageDriver,
-} from 'typeorm-transactional';
 
 import { ConfigService } from '@core/config/config.service';
+import { HttpAppExceptionFilter } from '@core/errors/http-exception.filter';
 import { AppModule } from './app.module';
 import { GatewayConfig } from './config/gateway.config';
 
@@ -21,8 +18,6 @@ import { GatewayConfig } from './config/gateway.config';
  * comes from a message to another service or from object storage.
  */
 async function bootstrap() {
-  initializeTransactionalContext({ storageDriver: StorageDriver.AUTO });
-
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ trustProxy: true }),
@@ -42,6 +37,10 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: false },
     }),
   );
+
+  // One envelope for every failure, so a client branches on `code` rather
+  // than on prose or on a bare status.
+  app.useGlobalFilters(new HttpAppExceptionFilter());
 
   const configService = app.get<ConfigService<GatewayConfig>>(ConfigService);
 

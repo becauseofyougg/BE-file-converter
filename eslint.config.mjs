@@ -31,4 +31,17 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-argument': 'warn'
     },
   },
+  {
+    files: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
+    rules: {
+      // `expect(service.method)` is how jest asserts on a mock, and the rule
+      // reads every one of them as an unbound `this` — on a jest.fn() there is
+      // no `this` to lose. typescript-eslint's own docs point at the jest
+      // plugin's variant for exactly this case.
+      '@typescript-eslint/unbound-method': 'off',
+      // `expect.objectContaining` and the other asymmetric matchers are typed
+      // `any`, so every assertion built from one trips this.
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+    },
+  },
 );

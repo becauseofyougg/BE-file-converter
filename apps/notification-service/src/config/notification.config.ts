@@ -2,15 +2,15 @@ import Joi from 'joi';
 
 import {
   BaseConfig,
-  PostgresConfig,
+  DatabaseConfig,
   RabbitMQConfig,
   baseConfigSchema,
-  postgresConfigSchema,
+  databaseConfigSchema,
   rabbitmqConfigSchema,
 } from '@core/config';
 
 export interface NotificationConfig
-  extends BaseConfig, PostgresConfig, RabbitMQConfig {
+  extends BaseConfig, DatabaseConfig, RabbitMQConfig {
   SMTP_HOST: string;
   SMTP_PORT: number;
   SMTP_USER?: string;
@@ -24,7 +24,7 @@ export interface NotificationConfig
 
 export const notificationConfigSchema = Joi.object<NotificationConfig>({
   ...baseConfigSchema,
-  ...postgresConfigSchema,
+  ...databaseConfigSchema,
   ...rabbitmqConfigSchema,
 
   SMTP_HOST: Joi.string().required(),

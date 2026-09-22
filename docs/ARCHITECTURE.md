@@ -2,7 +2,8 @@
 
 **Status:** draft for mentor approval
 **Date:** 2026-09-14
-**Base:** this repo (NestJS 11 + Fastify + TypeORM/PostgreSQL boilerplate), converted into a Nest monorepo
+**Base:** this repo (NestJS 11 + Fastify + PostgreSQL boilerplate), converted into a Nest monorepo. The
+boilerplate shipped TypeORM; the stack now uses Prisma (README → Database).
 
 ---
 
@@ -106,8 +107,8 @@ and gets versioned.
    tiny HTTP listener for `/health` only.
 5. `Config` interface (`libs/core/config`) extended per app — each app validates only the env vars it
    needs, so the conversion worker does not require SMTP credentials to boot.
-6. One TypeORM data-source and one migrations directory **per owning service**; `POSTGRES_MIGRATIONS_RUN`
-   stays as-is for local, off in production (migrations run as a deploy step).
+6. One Prisma schema and one migrations directory **per owning service**; containers run
+   `prisma migrate deploy` at start for the local stack, and production migrates as a deploy step.
 
 ---
 
@@ -143,7 +144,7 @@ not block a 200 ms thumbnail resize, and the image worker's container does not s
 - **Idempotency:** `jobId` is the message id; the handler loads the job row and returns immediately if
   its status is already terminal. Redelivery after an ack-loss is then harmless.
 - **Transactional outbox** in every publishing service: the job row and the outbox row are written in
-  one `@Transactional()` (already available via `typeorm-transactional`), and a relay publishes and
+  one `@Transactional()` (via `@nestjs-cls/transactional`), and a relay publishes and
   marks them sent. Without this you eventually get a job in the DB that no worker ever hears about, or
   an event for a rollback that never happened.
 - `correlationId` travels in message headers and is logged by every service.
