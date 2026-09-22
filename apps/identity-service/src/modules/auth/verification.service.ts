@@ -33,6 +33,20 @@ export const MAX_RESENDS_PER_HOUR = 5;
 export const LINK_TTL_MS = 24 * 60 * 60 * 1000;
 export const LINK_BYTES = 32;
 
+/**
+ * How long a magic link lives, per purpose.
+ *
+ * A registration link is often clicked hours later from a different device, so
+ * 24 h; a login link is answered immediately, and a live one is a standing
+ * invitation to take over the session it belongs to — docs/AUTHENTICATION.md
+ * §1.3.2 sets it at 10 minutes for that reason.
+ */
+const LINK_TTL_BY_TYPE: Record<VerificationTokenType, number> = {
+  [VERIFICATION_TOKEN_TYPES.EMAIL_VERIFICATION]: LINK_TTL_MS,
+  [VERIFICATION_TOKEN_TYPES.LOGIN_CONFIRMATION]: 10 * 60 * 1000,
+  [VERIFICATION_TOKEN_TYPES.PASSWORD_RESET]: 60 * 60 * 1000,
+};
+
 export interface IssuedChallenge {
   challengeId: string;
   /** The value that goes in the email. Never stored, never logged. */
@@ -72,7 +86,7 @@ export class VerificationService {
     await this.invalidateLive(userId, type);
 
     const method = this.settings.confirmationMethod();
-    const { secret, expiresAt } = this.generate(method);
+    const { secret, expiresAt } = this.generate(method, type);
 
     const token = await this.db.verificationToken.create({
       data: {
@@ -104,7 +118,10 @@ export class VerificationService {
     this.assertResendAllowed(token);
 
     const method = this.settings.confirmationMethod();
-    const { secret, expiresAt } = this.generate(method);
+    const { secret, expiresAt } = this.generate(
+      method,
+      token.type as VerificationTokenType,
+    );
 
     await this.db.verificationToken.update({
       where: { id: token.id },
@@ -280,14 +297,17 @@ export class VerificationService {
     return Date.now() - token.lastSentAt.getTime() < 60 * 60 * 1000;
   }
 
-  private generate(method: ConfirmationMethod): {
+  private generate(
+    method: ConfirmationMethod,
+    type: VerificationTokenType,
+  ): {
     secret: string;
     expiresAt: Date;
   } {
     return method === 'link'
       ? {
           secret: randomBytes(LINK_BYTES).toString('base64url'),
-          expiresAt: new Date(Date.now() + LINK_TTL_MS),
+          expiresAt: new Date(Date.now() + LINK_TTL_BY_TYPE[type]),
         }
       : {
           secret: generateOtp(),

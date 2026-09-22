@@ -39,6 +39,44 @@ export class RegisterDto {
   password: string;
 }
 
+/**
+ * No minimum length, unlike registration: the policy may have been tightened
+ * since this account was created, and rejecting a short password here would
+ * tell an attacker that anything shorter is not worth trying.
+ */
+export class LoginDto {
+  @Transform(normalize)
+  @IsEmail()
+  @MaxLength(254)
+  email: string;
+
+  @IsString()
+  @MaxLength(PASSWORD_MAX_LENGTH)
+  password: string;
+}
+
+export class ConfirmLoginDto {
+  @IsOptional()
+  @IsUUID()
+  challengeId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(OTP_LENGTH, OTP_LENGTH)
+  code?: string;
+
+  /** The magic-link token, when that is the configured method. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  token?: string;
+}
+
+export class ResendLoginConfirmationDto {
+  @IsUUID()
+  challengeId: string;
+}
+
 export class VerifyEmailDto {
   @IsOptional()
   @IsUUID()

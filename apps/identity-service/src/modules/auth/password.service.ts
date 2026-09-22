@@ -66,4 +66,32 @@ export class PasswordService {
       );
     }
   }
+
+  /**
+   * Spends one verification's worth of CPU against a throwaway hash.
+   *
+   * Login must take the same time whether or not the address exists. Returning
+   * early when the lookup misses turns response latency into an
+   * account-existence oracle, and no amount of neutral wording in the error
+   * body hides a reply that comes back ten times faster.
+   */
+  async burnVerificationTime(): Promise<void> {
+    await argon2.verify(await this.dummyHash(), 'not-the-password');
+  }
+
+  /**
+   * Hashed once per process, not per call: the point is to match the cost of a
+   * *verify*, and hashing here as well would make the miss path slower than
+   * the hit path — the same oracle, pointing the other way.
+   */
+  private dummyHashPromise: Promise<string> | null = null;
+
+  private dummyHash(): Promise<string> {
+    this.dummyHashPromise ??= argon2.hash(
+      'timing-equalisation-placeholder',
+      ARGON2_OPTIONS,
+    );
+
+    return this.dummyHashPromise;
+  }
 }

@@ -18,7 +18,10 @@ import type { TokenPair } from '@contracts/messages/identity.messages';
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
 import { AuthService, type CallerContext } from './auth.service';
 import {
+  ConfirmLoginDto,
+  LoginDto,
   RegisterDto,
+  ResendLoginConfirmationDto,
   ResendVerificationDto,
   VerifyEmailDto,
 } from './dto/auth.dto';
@@ -78,6 +81,83 @@ export class AuthController {
       challengeId: result.challengeId,
       expiresAt: result.expiresAt,
     };
+  }
+
+  /**
+   * `200` with a session when login confirmation is off, `202` without one
+   * when it is on — the same shape registration uses, for the same reason.
+   *
+   * The per-email limit is tighter than registration's: this is the endpoint a
+   * password-spraying botnet aims at, and the per-IP throttle does nothing
+   * against one that rotates addresses.
+   */
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
+  @EmailLimit(5, 15 * 60 * 1000)
+  async login(
+    @Body() dto: LoginDto,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const result = await this.auth.login(
+      { email: dto.email, password: dto.password },
+      callerContext(request),
+    );
+
+    if (result.status === 'authenticated' && result.tokens) {
+      return {
+        status: result.status,
+        userId: result.userId,
+        ...this.withRefreshCookie(reply, result.tokens),
+      };
+    }
+
+    void reply.status(HttpStatus.ACCEPTED);
+
+    return {
+      status: 'confirmation_required',
+      challengeId: result.challengeId,
+      expiresAt: result.expiresAt,
+    };
+  }
+
+  /**
+   * Completes a login that was waiting on an emailed code or link. The magic
+   * link points here — docs/AUTHENTICATION.md §1.3.2.
+   */
+  @Post('confirm')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
+  async confirmLogin(
+    @Body() dto: ConfirmLoginDto,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const result = await this.auth.confirmLogin(
+      { challengeId: dto.challengeId, code: dto.code, token: dto.token },
+      callerContext(request),
+    );
+
+    return {
+      status: result.status,
+      userId: result.userId,
+      ...this.withRefreshCookie(reply, result.tokens),
+    };
+  }
+
+  /** Always `202`, whatever became of the challenge. */
+  @Post('resend-login-confirmation')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
+  async resendLoginConfirmation(
+    @Body() dto: ResendLoginConfirmationDto,
+    @Req() request: FastifyRequest,
+  ) {
+    return this.auth.resendLoginConfirmation(
+      dto.challengeId,
+      callerContext(request),
+    );
   }
 
   /**

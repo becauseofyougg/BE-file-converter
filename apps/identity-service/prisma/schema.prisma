@@ -43,6 +43,15 @@ model User {
   /// this table is concerned.
   emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
 
+  /// Consecutive failed passwords, reset on any success. Counted per account
+  /// rather than per IP: a password-spraying botnet rotates addresses, and the
+  /// thing being attacked is this account.
+  failedLoginAttempts Int @default(0) @map("failed_login_attempts")
+
+  /// Set when the count crosses the threshold; login is refused until it
+  /// passes. Null when not locked.
+  lockedUntil DateTime? @map("locked_until") @db.Timestamptz(6)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

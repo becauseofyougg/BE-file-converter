@@ -9,6 +9,8 @@ export const IDENTITY_PATTERNS = {
   VERIFY_EMAIL: 'identity.auth.verify-email',
   RESEND_VERIFICATION: 'identity.auth.resend-verification',
   LOGIN: 'identity.auth.login',
+  CONFIRM_LOGIN: 'identity.auth.confirm-login',
+  RESEND_LOGIN_CONFIRMATION: 'identity.auth.resend-login-confirmation',
   REFRESH: 'identity.auth.refresh',
   LOGOUT: 'identity.auth.logout',
   FORGOT_PASSWORD: 'identity.auth.forgot-password',
@@ -66,6 +68,8 @@ export interface ResendVerificationResponse {
  */
 export const VERIFICATION_TOKEN_TYPES = {
   EMAIL_VERIFICATION: 'email_verification',
+  /** A login waiting to be confirmed — docs/AUTHENTICATION.md §1.3. */
+  LOGIN_CONFIRMATION: 'login_confirmation',
   PASSWORD_RESET: 'password_reset',
 } as const;
 
@@ -79,6 +83,34 @@ export interface LoginRequest {
   password: string;
   userAgent?: string;
   ip?: string;
+}
+
+/**
+ * Mirrors RegisterResponse: either a session, or a challenge to complete
+ * first. The status is the contract, so a client branches without guessing
+ * from which fields happen to be present.
+ */
+export interface LoginResponse {
+  status: 'authenticated' | 'confirmation_required';
+  userId?: string;
+  challengeId?: string;
+  expiresAt?: string;
+  tokens?: TokenPair;
+}
+
+/** One shape for both methods: an OTP quoted against a challenge, or a link token. */
+export interface ConfirmLoginRequest {
+  challengeId?: string;
+  code?: string;
+  token?: string;
+  userAgent?: string;
+  ip?: string;
+}
+
+export interface ConfirmLoginResponse {
+  status: 'authenticated';
+  userId: string;
+  tokens: TokenPair;
 }
 
 export interface TokenPair {

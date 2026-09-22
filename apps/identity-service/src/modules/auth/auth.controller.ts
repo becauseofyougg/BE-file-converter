@@ -10,6 +10,8 @@ import {
 
 import {
   IDENTITY_PATTERNS,
+  type ConfirmLoginResponse,
+  type LoginResponse,
   type RegisterResponse,
   type ResendVerificationResponse,
   type VerifyEmailResponse,
@@ -17,6 +19,12 @@ import {
 import { RpcAppExceptionFilter } from '@core/errors/rpc-app-exception.filter';
 import { settleRpc } from '@core/messaging/rmq-ack';
 import { AuthService } from './auth.service';
+import {
+  ConfirmLoginMessageDto,
+  LoginMessageDto,
+  ResendLoginConfirmationMessageDto,
+} from './dto/login.dto';
+import { LoginService } from './login.service';
 import { RegisterMessageDto } from './dto/register.dto';
 import {
   ResendVerificationMessageDto,
@@ -46,7 +54,10 @@ const messageValidationPipe = new ValidationPipe({
 @Controller()
 @UseFilters(RpcAppExceptionFilter)
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly login: LoginService,
+  ) {}
 
   @MessagePattern(IDENTITY_PATTERNS.REGISTER)
   async register(
@@ -90,6 +101,49 @@ export class AuthController {
         email: dto.email,
         correlationId: dto.correlationId ?? randomUUID(),
       }),
+    );
+  }
+  @MessagePattern(IDENTITY_PATTERNS.LOGIN)
+  async logIn(
+    @Payload(messageValidationPipe) dto: LoginMessageDto,
+    @Ctx() context: RmqContext,
+  ): Promise<LoginResponse> {
+    return settleRpc(context, () =>
+      this.login.login({
+        email: dto.email,
+        password: dto.password,
+        correlationId: dto.correlationId ?? randomUUID(),
+        session: { userAgent: dto.userAgent, ip: dto.ip },
+      }),
+    );
+  }
+
+  @MessagePattern(IDENTITY_PATTERNS.CONFIRM_LOGIN)
+  async confirmLogin(
+    @Payload(messageValidationPipe) dto: ConfirmLoginMessageDto,
+    @Ctx() context: RmqContext,
+  ): Promise<ConfirmLoginResponse> {
+    return settleRpc(context, () =>
+      this.login.confirmLogin({
+        challengeId: dto.challengeId,
+        code: dto.code,
+        token: dto.token,
+        correlationId: dto.correlationId ?? randomUUID(),
+        session: { userAgent: dto.userAgent, ip: dto.ip },
+      }),
+    );
+  }
+
+  @MessagePattern(IDENTITY_PATTERNS.RESEND_LOGIN_CONFIRMATION)
+  async resendLoginConfirmation(
+    @Payload(messageValidationPipe) dto: ResendLoginConfirmationMessageDto,
+    @Ctx() context: RmqContext,
+  ): Promise<{ status: 'accepted' }> {
+    return settleRpc(context, () =>
+      this.login.resendConfirmation(
+        dto.challengeId,
+        dto.correlationId ?? randomUUID(),
+      ),
     );
   }
 }

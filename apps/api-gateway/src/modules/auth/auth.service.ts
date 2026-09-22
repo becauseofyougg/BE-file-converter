@@ -3,6 +3,8 @@ import { ClientProxy } from '@nestjs/microservices';
 
 import {
   IDENTITY_PATTERNS,
+  type ConfirmLoginResponse,
+  type LoginResponse,
   type RegisterResponse,
   type ResendVerificationResponse,
   type VerifyEmailResponse,
@@ -57,6 +59,38 @@ export class AuthService {
       this.identity,
       IDENTITY_PATTERNS.RESEND_VERIFICATION,
       { ...input, correlationId: caller.correlationId },
+    );
+  }
+  login(
+    input: { email: string; password: string },
+    caller: CallerContext,
+  ): Promise<LoginResponse> {
+    return sendRpc<LoginResponse, Record<string, unknown>>(
+      this.identity,
+      IDENTITY_PATTERNS.LOGIN,
+      { ...input, ...caller },
+    );
+  }
+
+  confirmLogin(
+    input: { challengeId?: string; code?: string; token?: string },
+    caller: CallerContext,
+  ): Promise<ConfirmLoginResponse> {
+    return sendRpc<ConfirmLoginResponse, Record<string, unknown>>(
+      this.identity,
+      IDENTITY_PATTERNS.CONFIRM_LOGIN,
+      { ...input, ...caller },
+    );
+  }
+
+  resendLoginConfirmation(
+    challengeId: string,
+    caller: CallerContext,
+  ): Promise<{ status: 'accepted' }> {
+    return sendRpc<{ status: 'accepted' }, Record<string, unknown>>(
+      this.identity,
+      IDENTITY_PATTERNS.RESEND_LOGIN_CONFIRMATION,
+      { challengeId, correlationId: caller.correlationId },
     );
   }
 }

@@ -14,6 +14,8 @@ export const DOMAIN_EVENTS = {
    */
   USER_REGISTRATION_ATTEMPTED: 'user.registration_attempted',
   USER_EMAIL_VERIFIED: 'user.email_verified',
+  /** A login is waiting on an emailed code or link. */
+  USER_LOGIN_CONFIRMATION_REQUESTED: 'user.login_confirmation_requested',
   /**
    * The RBAC config changed. Enforcement points hold a cached copy and reload
    * on this — which is what makes a rule change apply without a restart.
@@ -53,6 +55,18 @@ export type UserVerificationResentPayload = UserRegisteredPayload;
 export interface UserRegistrationAttemptedPayload {
   userId: string;
   email: string;
+}
+
+export interface LoginConfirmationRequestedPayload {
+  userId: string;
+  email: string;
+  method: 'otp' | 'link';
+  /** The code or link token — rendered by notification-service, never logged. */
+  secret: string;
+  expiresAt: string;
+  /** Shown in the mail so the owner can recognise a login they did not make. */
+  userAgent?: string;
+  ip?: string;
 }
 
 export interface RbacUpdatedPayload {

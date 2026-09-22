@@ -34,4 +34,13 @@ export class AuthSettingsService {
   confirmationMethod(): ConfirmationMethod {
     return this.config.get('AUTH_CONFIRM_METHOD') === 'link' ? 'link' : 'otp';
   }
+
+  /** docs/AUTHENTICATION.md §1.4. */
+  maxFailedLoginAttempts(): number {
+    return this.config.getNumber('LOGIN_MAX_FAILED_ATTEMPTS');
+  }
+
+  loginLockoutMs(): number {
+    return this.config.getNumber('LOGIN_LOCKOUT_MINUTES') * 60 * 1000;
+  }
 }

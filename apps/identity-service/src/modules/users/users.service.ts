@@ -57,6 +57,28 @@ export class UsersService {
     });
   }
 
+  async recordLoginFailure(userId: string): Promise<void> {
+    await this.db.user.update({
+      where: { id: userId },
+      data: { failedLoginAttempts: { increment: 1 } },
+    });
+  }
+
+  async lockLogin(userId: string, until: Date): Promise<void> {
+    await this.db.user.update({
+      where: { id: userId },
+      data: { failedLoginAttempts: { increment: 1 }, lockedUntil: until },
+    });
+  }
+
+  /** Any successful password clears both the count and any expired lock. */
+  async resetLoginFailures(userId: string): Promise<void> {
+    await this.db.user.update({
+      where: { id: userId },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
+  }
+
   async markEmailVerified(userId: string): Promise<void> {
     await this.db.user.update({
       where: { id: userId },
