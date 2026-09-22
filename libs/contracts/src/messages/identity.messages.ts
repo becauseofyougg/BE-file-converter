@@ -90,6 +90,29 @@ export interface TokenPair {
 export interface AuthenticatedUser {
   id: string;
   email: string;
-  role: UserRole;
+  /**
+   * Role *names*, as carried by the access token. Plural because a user may
+   * hold several — see docs/RBAC.md §1.1 — and because the RBAC evaluator
+   * unions the grants of all of them.
+   */
+  roles: string[];
   emailVerified: boolean;
 }
+
+/**
+ * The claims the gateway reads off an access token. No email and no personal
+ * data: a JWT is signed, not secret.
+ */
+export interface AccessTokenClaims {
+  sub: string;
+  roles: string[];
+  jti: string;
+  iat?: number;
+  exp?: number;
+}
+
+/** The two roles seeded so the system can boot and so an admin exists. */
+export const SYSTEM_ROLES = {
+  USER: UserRole.USER,
+  ADMIN: UserRole.ADMIN,
+} as const;

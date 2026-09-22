@@ -43,6 +43,15 @@ export interface HttpEdgeConfig {
   CORS_ORIGINS: string;
 }
 
+/**
+ * What a service needs to *verify* an access token. Identity signs them and
+ * declares more (TTLs, refresh lifetime); the gateway only checks signatures,
+ * so it takes the secret and nothing else.
+ */
+export interface JwtVerifyConfig {
+  JWT_SECRET: string;
+}
+
 export interface ThrottlerConfig {
   THROTTLE_GLOBAL_TTL?: number;
   THROTTLE_GLOBAL_LIMIT?: number;

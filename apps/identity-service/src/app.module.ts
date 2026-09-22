@@ -16,6 +16,7 @@ import { MessagingModule } from './messaging/messaging.module';
  */
 import { AuthModule } from './modules/auth/auth.module';
 import { OutboxModule } from './modules/outbox/outbox.module';
+import { RbacModule } from './modules/rbac/rbac.module';
 import { TokensModule } from './modules/tokens/tokens.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -38,6 +39,7 @@ import { UsersModule } from './modules/users/users.module';
     UsersModule,
     TokensModule,
     OutboxModule,
+    RbacModule,
   ],
 })
 export class AppModule {}

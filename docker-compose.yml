@@ -116,6 +116,9 @@ services:
       SERVICE_NAME: api-gateway
       PORT: 3000
       COOKIE_SECRET: ${COOKIE_SECRET:-change-me}
+      # The same secret identity signs with: the gateway verifies tokens
+      # locally, which is what keeps an RPC off every authenticated request.
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-at-least-32-characters-long}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5174,http://localhost:4200}
       THROTTLE_GLOBAL_TTL: 10000
       THROTTLE_GLOBAL_LIMIT: 100

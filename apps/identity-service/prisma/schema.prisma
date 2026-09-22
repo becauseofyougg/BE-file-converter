@@ -38,8 +38,6 @@ model User {
   /// argon2id, with its parameters encoded in the string. Never logged.
   passwordHash String @map("password_hash")
 
-  role String @default("USER") @db.VarChar(16)
-
   /// Null until the address is proven. Registration with confirmation off sets
   /// it immediately — the only difference between the two modes, as far as
   /// this table is concerned.
@@ -50,8 +48,89 @@ model User {
 
   verificationTokens VerificationToken[]
   refreshTokens      RefreshToken[]
+  roles              UserRoleAssignment[]
 
   @@map("users")
+}
+
+/// A role a user holds. Many-to-many because docs/RBAC.md §1.1 makes a user
+/// "the bearer of one or more roles", and the evaluator unions their grants.
+model UserRoleAssignment {
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Restrict, not Cascade: deleting a role that people still hold would
+  /// silently strip their access. §1.3.2 requires the refusal instead.
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  @@id([userId, roleId])
+  @@index([roleId], map: "idx_user_roles_role")
+  @@map("user_roles")
+}
+
+/// A named role. The set is data, not code — that is the point of the whole
+/// feature: an administrator adds one without a deploy.
+model Role {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @unique(map: "uq_roles_name") @db.VarChar(64)
+  description String? @db.VarChar(255)
+
+  /// Seeded roles the application relies on existing (USER, ADMIN). They can
+  /// be granted and revoked like any other, but not renamed or deleted —
+  /// otherwise a bad afternoon in the admin UI locks everyone out.
+  isSystem Boolean @default(false) @map("is_system")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  grants Grant[]
+  users  UserRoleAssignment[]
+
+  @@map("roles")
+}
+
+/// A protected resource and the actions it defines — `users` with
+/// `['read', 'create', 'delete']`. A grant may hand out all of them or a subset.
+model Permission {
+  id   String @id @default(uuid()) @db.Uuid
+  name String @unique(map: "uq_permissions_name") @db.VarChar(64)
+
+  /// The closed set of actions this resource understands. An action outside it
+  /// can never be granted, so a grant naming one is rejected at write time.
+  actions String[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  grants Grant[]
+
+  @@map("permissions")
+}
+
+/// Role → permission, optionally narrowed to some of its actions.
+model Grant {
+  id           String @id @default(uuid()) @db.Uuid
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  /// Empty means every action the permission defines. Stored empty rather than
+  /// expanded, so an action added to the permission later is picked up without
+  /// revisiting every grant that meant "all of them".
+  actions String[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  /// §1.3.4: one grant per (role, permission) — a second one would make the
+  /// effective actions depend on which row was read first.
+  @@unique([roleId, permissionId], map: "uq_grants_role_permission")
+  @@map("grants")
 }
 
 /// One row is one *challenge*: the thing a user is currently being asked to

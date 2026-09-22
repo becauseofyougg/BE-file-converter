@@ -235,7 +235,9 @@ job; the API is designed so that change is additive (`POST /conversions/presign`
 
 ## 7. Data model
 
-**identity DB** — `users` (id, email `UNIQUE CITEXT`, password_hash, role, email_verified_at,
+**identity DB** — RBAC lives here too: `roles` · `permissions` · `grants` · `user_roles`, and a user
+holds *many* roles, so the single `role` column is gone ([RBAC.md](RBAC.md) §2) ·
+`users` (id, email `UNIQUE CITEXT`, password_hash, email_verified_at,
 created_at, updated_at) · `refresh_tokens` (id, user_id, token_hash, expires_at, revoked_at,
 user_agent, ip) · `verification_tokens` (id, user_id, type, token_hash, expires_at, used_at).
 
