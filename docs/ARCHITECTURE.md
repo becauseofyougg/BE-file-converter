@@ -238,7 +238,7 @@ job; the API is designed so that change is additive (`POST /conversions/presign`
 **identity DB** — RBAC lives here too: `roles` · `permissions` · `grants` · `user_roles`, and a user
 holds *many* roles, so the single `role` column is gone ([RBAC.md](RBAC.md) §2) ·
 `users` (id, email `UNIQUE CITEXT`, password_hash, email_verified_at,
-created_at, updated_at, failed_login_attempts, locked_until) ·
+created_at, updated_at, failed_login_attempts, locked_until, photo_key) ·
 `verification_tokens` (id, user_id, type, token_hash, expires_at, used_at).
 
 There is deliberately **no** `refresh_tokens` table: refresh state may not be stored on the server
@@ -267,7 +267,8 @@ Token tables store **hashes**, never the raw token.
 | `POST` | `/auth/refresh` | rotates the pair and re-reads the roles |
 | `POST` | `/auth/logout` | clears the cookies — there is nothing to revoke |
 | `POST` | `/auth/verify-email` · `/auth/forgot-password` · `/auth/reset-password` | |
-| `GET`/`PATCH` | `/users/me` | |
+| `GET` | `/users/:userId` | self, or the holder of `users@read`; fields filtered per audience |
+| `PATCH` | `/users/:userId` | not built |
 | `GET` | `/formats` | conversion matrix, derived from the registry |
 | `POST` | `/conversions` | multipart: file + `targetFormat` + options → **`202` `{ jobId }`** |
 | `GET` | `/conversions` | own jobs, paginated, filter by status |

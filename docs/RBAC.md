@@ -210,8 +210,9 @@ promotion is recorded as something a human did.
 Guards are registered as `APP_GUARD`, so **every route is authenticated unless it says `@Public()`** —
 opt-out, so a new controller is protected by the fact that nobody did anything. `/auth/*` and
 `/health` are the public ones. A route additionally declares `@Permissions('resource@action')` when it
-needs one; authentication alone is the bar otherwise, since inventing a permission for `/users/me`
-buys nothing.
+needs one; authentication alone is the bar otherwise. `GET /users/:userId` declares none deliberately
+— its rule depends on who the target turns out to be, which a decorator cannot express
+([USER-PROFILE.md §3](USER-PROFILE.md)).
 
 ---
 
@@ -238,9 +239,12 @@ config version:
    re-reads it. Shortening that further means shortening `JWT_ACCESS_TTL`; nothing can shorten it to
    zero, since refresh tokens are not stored and there is nothing to revoke
    ([AUTHORIZATION.md §5](AUTHORIZATION.md#5-post-authlogout-and-what-it-cannot-do)).
-2. Ownership ("this job is mine") is not RBAC and is not built. It belongs with the conversions
-   endpoints.
-3. `rbac.check` exists for services that hold no cache. Nothing calls it yet — the gateway is the only
-   enforcement point today.
+2. Ownership ("this job is mine") is not RBAC. The first place it appears is profile reads, where
+   "self **or** `users@read`" is decided in identity rather than by a route decorator
+   ([USER-PROFILE.md §3](USER-PROFILE.md)) — that migration also took `users@read` away from the
+   `USER` role, which the seed had granted to everyone. Ownership of *conversions* is still not built.
+3. `rbac.check` exists for services that hold no cache. Nothing calls it over RPC yet, though identity
+   now uses the same evaluator in-process for profile reads — the gateway is still the only
+   enforcement point for route-level permissions.
 4. The per-replica event queue is auto-deleting. If a gateway is partitioned from RabbitMQ for longer
    than a config change takes, it keeps serving stale rules until reconnect, when it reloads.
