@@ -154,6 +154,10 @@ it.
 
 There is no seeded administrator — §8 of that document has the one-line SQL to promote the first one.
 
+Ownership is kept separate from roles. `GET /users/:userId` is the first place the two meet: you may
+read your own profile because it is yours, or someone else's because you hold `users@read`, and the
+fields you get back differ between the two ([docs/USER-PROFILE.md](docs/USER-PROFILE.md)).
+
 ## Messaging
 
 Two interaction styles, deliberately kept distinct — the names live in `libs/contracts/messaging`:

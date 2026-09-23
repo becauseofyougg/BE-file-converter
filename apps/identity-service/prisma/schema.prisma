@@ -52,6 +52,13 @@ model User {
   /// passes. Null when not locked.
   lockedUntil DateTime? @map("locked_until") @db.Timestamptz(6)
 
+  /// An object-storage key in the `uploads` bucket, never a URL: the bucket is
+  /// private, so what the client receives is a short-lived presigned link the
+  /// gateway mints per request. Storing a URL would either make the object
+  /// public or bake an expiry into a column. Null until a photo is uploaded —
+  /// and nothing uploads one yet, see docs/USER-PROFILE.md §5.
+  photoKey String? @map("photo_key") @db.VarChar(512)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
