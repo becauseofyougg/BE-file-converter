@@ -22,6 +22,13 @@ export const DOMAIN_EVENTS = {
    */
   RBAC_UPDATED: 'rbac.updated',
   USER_PASSWORD_RESET_REQUESTED: 'user.password_reset_requested',
+  /** A user asked to move their account to a new address; sent to the new one. */
+  USER_EMAIL_CHANGE_REQUESTED: 'user.email_change_requested',
+  /**
+   * The address changed. Sent to the **old** one, which is the only way its
+   * owner finds out that an account takeover has moved their account away.
+   */
+  USER_EMAIL_CHANGED: 'user.email_changed',
   CONVERSION_COMPLETED: 'conversion.completed',
   CONVERSION_FAILED: 'conversion.failed',
 } as const;
@@ -88,6 +95,25 @@ export interface PasswordResetRequestedPayload {
   email: string;
   secret: string;
   expiresAt: string;
+}
+
+export interface EmailChangeRequestedPayload {
+  userId: string;
+  /** Where the code or link goes: the address being claimed, not the current one. */
+  newEmail: string;
+  method: 'otp' | 'link';
+  /** The code or link token — rendered by notification-service, never logged. */
+  secret: string;
+  expiresAt: string;
+}
+
+export interface EmailChangedPayload {
+  userId: string;
+  /** The address that just lost the account, and where this notice goes. */
+  previousEmail: string;
+  newEmail: string;
+  /** Present when an administrator made the change rather than the user. */
+  actorUserId?: string;
 }
 
 export interface ConversionCompletedPayload {

@@ -7,8 +7,13 @@
  * rather than an internal key where a URL should be.
  */
 
+import type { ConfirmationMethod } from './identity.messages';
+
 export const USERS_PATTERNS = {
   GET_PROFILE: 'identity.users.get-profile',
+  UPDATE_PROFILE: 'identity.users.update-profile',
+  START_EMAIL_CHANGE: 'identity.users.start-email-change',
+  CONFIRM_EMAIL_CHANGE: 'identity.users.confirm-email-change',
 } as const;
 
 export interface GetUserProfileRequest {
@@ -28,6 +33,7 @@ export interface GetUserProfileRequest {
 export interface UserProfileRecord {
   id: string;
   email?: string;
+  displayName?: string | null;
   photoKey?: string | null;
   emailVerified?: boolean;
   createdAt?: string;
@@ -38,6 +44,7 @@ export interface UserProfileRecord {
 export interface UserProfile {
   id: string;
   email?: string;
+  displayName?: string | null;
   photo?: string | null;
   emailVerified?: boolean;
   createdAt?: string;
@@ -74,6 +81,7 @@ export const PROFILE_FIELD_POLICY: Record<
   [PROFILE_AUDIENCES.SELF]: [
     'id',
     'email',
+    'displayName',
     'photo',
     'emailVerified',
     'createdAt',
@@ -82,6 +90,7 @@ export const PROFILE_FIELD_POLICY: Record<
   [PROFILE_AUDIENCES.OTHER]: [
     'id',
     'email',
+    'displayName',
     'photo',
     'emailVerified',
     'createdAt',
@@ -93,3 +102,82 @@ export const PROFILE_FIELD_POLICY: Record<
  * Self-access does not consult it — §3.
  */
 export const PROFILE_READ_PERMISSION = { resource: 'users', action: 'read' };
+
+/** And the one that lets them change it. */
+export const PROFILE_UPDATE_PERMISSION = {
+  resource: 'users',
+  action: 'update',
+};
+
+/**
+ * What `PATCH /users/:userId` accepts. `null` clears an optional field;
+ * omitting it leaves it alone, which is the difference a PATCH exists to
+ * express.
+ */
+export interface UserPatch {
+  displayName?: string | null;
+  email?: string;
+}
+
+export const DISPLAY_NAME_MAX_LENGTH = 64;
+
+/**
+ * The writable field allow-list, per audience — the set §1.3.1 asks to be
+ * fixed. Default-deny: a field absent from the audience's row is refused, not
+ * ignored, so a client learns its change did not happen.
+ *
+ * **Self cannot set `email` here**, which is the requirement's central rule:
+ * moving an account to a new address has to be proved against that address, so
+ * it goes through the challenge flow instead. An administrator can, because the
+ * point of the administrative path is to rescue someone who has lost the
+ * mailbox they would otherwise have to prove.
+ *
+ * **Nobody can set `photo` here**, in either role. It is an object-storage key,
+ * and a client that could write one at will could point its own profile at any
+ * object in the bucket and be handed a presigned URL for it. The key is written
+ * server-side by the upload endpoint, when that exists.
+ */
+export const PROFILE_PATCH_POLICY: Record<
+  ProfileAudience,
+  readonly (keyof UserPatch)[]
+> = {
+  [PROFILE_AUDIENCES.SELF]: ['displayName'],
+  [PROFILE_AUDIENCES.OTHER]: ['displayName', 'email'],
+};
+
+export interface UpdateUserProfileRequest {
+  targetUserId: string;
+  viewerUserId: string;
+  viewerRoles: string[];
+  patch: UserPatch;
+  correlationId?: string;
+}
+
+export interface StartEmailChangeRequest {
+  targetUserId: string;
+  viewerUserId: string;
+  newEmail: string;
+  correlationId?: string;
+}
+
+export interface StartEmailChangeResponse {
+  requiresConfirmation: true;
+  challengeId: string;
+  method: ConfirmationMethod;
+  expiresAt: string;
+}
+
+/** One shape for both methods: an OTP quoted against a challenge, or a link token. */
+export interface ConfirmEmailChangeRequest {
+  targetUserId: string;
+  challengeId?: string;
+  code?: string;
+  token?: string;
+  correlationId?: string;
+}
+
+export interface ConfirmEmailChangeResponse {
+  status: 'email_changed';
+  userId: string;
+  email: string;
+}

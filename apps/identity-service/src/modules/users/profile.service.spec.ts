@@ -17,6 +17,7 @@ function buildUser(overrides: Partial<User> = {}): User {
     emailVerifiedAt: new Date(),
     failedLoginAttempts: 0,
     lockedUntil: null,
+    displayName: 'Target',
     photoKey: 'profile-photos/target.jpg',
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date(),
@@ -154,7 +155,14 @@ describe('ProfileService', () => {
 
       expect(Object.keys(profile).sort()).toEqual(
         // `photo` is the public name; what identity emits is `photoKey`.
-        ['photoKey', 'emailVerified', 'createdAt', 'email', 'id'].sort(),
+        [
+          'photoKey',
+          'displayName',
+          'emailVerified',
+          'createdAt',
+          'email',
+          'id',
+        ].sort(),
       );
       expect(JSON.stringify(profile)).not.toContain('argon2id');
     });

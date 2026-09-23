@@ -12,8 +12,9 @@
 `GET /users/{userId}` returns a profile, filtered by who is asking. Self sees their own
 account; anyone else needs the `users@read` permission and sees less.
 
-**Out of scope:** updating a profile, and uploading a photo. The `photo_key` column
-exists and nothing writes to it yet (§5).
+**Out of scope:** writing a profile — that is [PROFILE-UPDATE.md](PROFILE-UPDATE.md), which reuses
+this document's audiences and projection — and uploading a photo. The `photo_key` column exists and
+nothing writes to it yet (§5).
 
 ---
 
@@ -82,6 +83,7 @@ Default-deny, from a policy in
 |---|---|---|
 | `id` | ✓ | ✓ |
 | `email` | ✓ | ✓ |
+| `displayName` | ✓ | ✓ |
 | `photo` | ✓ | ✓ |
 | `emailVerified` | ✓ | ✓ |
 | `createdAt` | ✓ | ✓ |
@@ -153,8 +155,9 @@ copies the data it audits doubles the number of places that data has to be prote
 3. **There is no role that holds `users@read` yet.** After §3's migration only ADMIN does,
    through its every-permission grant. A `SUPPORT` role is exactly what `/admin/rbac/*`
    exists to create, and creating one needs no deploy.
-4. `PATCH /users/:userId` is not built, and `users@update` is now held by nobody but
-   ADMIN. Self-update will need the same self-or-permission split this read uses.
+4. `PATCH /users/:userId` is built and uses the same self-or-permission split, keyed on
+   `users@update` ([PROFILE-UPDATE.md](PROFILE-UPDATE.md)). Like `users@read`, that action
+   is now held by nobody but ADMIN.
 5. The per-viewer counter lives in the throttler's in-memory store, so it is per replica.
    Under several gateways the effective limit multiplies; it belongs in Redis alongside
    the rest of the throttler state when that moves.

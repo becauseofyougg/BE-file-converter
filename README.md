@@ -154,9 +154,12 @@ it.
 
 There is no seeded administrator — §8 of that document has the one-line SQL to promote the first one.
 
-Ownership is kept separate from roles. `GET /users/:userId` is the first place the two meet: you may
-read your own profile because it is yours, or someone else's because you hold `users@read`, and the
-fields you get back differ between the two ([docs/USER-PROFILE.md](docs/USER-PROFILE.md)).
+Ownership is kept separate from roles. `/users/:userId` is where the two meet: you may read your own
+profile because it is yours, or someone else's because you hold `users@read`, and the fields you get
+back differ between the two ([docs/USER-PROFILE.md](docs/USER-PROFILE.md)). `PATCH` works the same way
+on `users@update`, with one asymmetry — you may not set your own `email` there, because claiming an
+address means proving you can read mail sent to it
+([docs/PROFILE-UPDATE.md](docs/PROFILE-UPDATE.md)).
 
 ## Messaging
 

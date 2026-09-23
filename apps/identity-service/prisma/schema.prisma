@@ -38,6 +38,11 @@ model User {
   /// argon2id, with its parameters encoded in the string. Never logged.
   passwordHash String @map("password_hash")
 
+  /// What the user calls themselves. Nullable and not unique: it is a label,
+  /// not an identifier — `email` is the identifier, and making two people pick
+  /// different names would be a rule with no purpose behind it.
+  displayName String? @map("display_name") @db.VarChar(64)
+
   /// Null until the address is proven. Registration with confirmation off sets
   /// it immediately — the only difference between the two modes, as far as
   /// this table is concerned.
@@ -169,6 +174,13 @@ model VerificationToken {
   tokenHash String @map("token_hash") @db.Char(64)
 
   method String @db.VarChar(8)
+
+  /// Only for `type = 'email_change'`: the address being claimed. It lives on
+  /// the challenge rather than being re-sent at confirmation time, so the
+  /// address that was proved is necessarily the address that gets applied —
+  /// otherwise a code mailed to one address could be quoted back alongside
+  /// another. Null for every other type.
+  newEmail String? @map("new_email") @db.Citext
 
   expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
   usedAt    DateTime? @map("used_at") @db.Timestamptz(6)

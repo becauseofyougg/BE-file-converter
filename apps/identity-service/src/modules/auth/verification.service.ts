@@ -44,6 +44,9 @@ export const LINK_BYTES = 32;
 const LINK_TTL_BY_TYPE: Record<VerificationTokenType, number> = {
   [VERIFICATION_TOKEN_TYPES.EMAIL_VERIFICATION]: LINK_TTL_MS,
   [VERIFICATION_TOKEN_TYPES.LOGIN_CONFIRMATION]: 10 * 60 * 1000,
+  // A live email-change link moves the account to whoever opens it, so it gets
+  // the short life a login link gets rather than registration's day.
+  [VERIFICATION_TOKEN_TYPES.EMAIL_CHANGE]: 10 * 60 * 1000,
   [VERIFICATION_TOKEN_TYPES.PASSWORD_RESET]: 60 * 60 * 1000,
 };
 
@@ -82,6 +85,12 @@ export class VerificationService {
   async issue(
     userId: string,
     type: VerificationTokenType = VERIFICATION_TOKEN_TYPES.EMAIL_VERIFICATION,
+    /**
+     * The address an `email_change` challenge is claiming. Stored on the row so
+     * the address that gets proved is necessarily the one that gets applied —
+     * docs/PROFILE-UPDATE.md §4.
+     */
+    newEmail?: string,
   ): Promise<IssuedChallenge> {
     await this.invalidateLive(userId, type);
 
@@ -94,6 +103,7 @@ export class VerificationService {
         type,
         tokenHash: hashSecret(secret),
         method,
+        newEmail: newEmail ?? null,
         expiresAt,
         usedAt: null,
         attempts: 0,

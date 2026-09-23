@@ -79,6 +79,54 @@ export class UsersService {
     });
   }
 
+  /**
+   * Applies an already-authorised, already-validated patch — docs/PROFILE-UPDATE.md §3.
+   *
+   * One statement, so the read-back is the committed row rather than a second
+   * query racing the first. Deciding *what* may be written is the caller's job;
+   * by the time anything reaches here the field policy has run.
+   */
+  update(
+    userId: string,
+    data: { displayName?: string | null; email?: string },
+  ): Promise<User> {
+    return this.db.user.update({
+      where: { id: userId },
+      data: {
+        ...data,
+        ...(data.email === undefined
+          ? {}
+          : {
+              email: normalizeEmail(data.email),
+              // A new address is unproven by definition. The one path that
+              // *has* proved it sets the timestamp itself, immediately after.
+              emailVerifiedAt: null,
+            }),
+      },
+    });
+  }
+
+  /**
+   * Moves the account to an address whose owner has just proved they hold it,
+   * so unlike `update` this marks it verified in the same statement.
+   */
+  changeEmail(userId: string, email: string): Promise<User> {
+    return this.db.user.update({
+      where: { id: userId },
+      data: { email: normalizeEmail(email), emailVerifiedAt: new Date() },
+    });
+  }
+
+  /** Whether some *other* account already holds this address. */
+  async isEmailTaken(email: string, exceptUserId: string): Promise<boolean> {
+    const existing = await this.db.user.findUnique({
+      where: { email: normalizeEmail(email) },
+      select: { id: true },
+    });
+
+    return existing !== null && existing.id !== exceptUserId;
+  }
+
   async markEmailVerified(userId: string): Promise<void> {
     await this.db.user.update({
       where: { id: userId },

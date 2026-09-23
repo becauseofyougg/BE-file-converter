@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
+  Patch,
+  Post,
   Req,
   SetMetadata,
   UseGuards,
@@ -11,9 +16,18 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyRequest } from 'fastify';
 
-import type { UserProfile } from '@contracts/messages/users.messages';
+import type {
+  ConfirmEmailChangeResponse,
+  StartEmailChangeResponse,
+  UserProfile,
+} from '@contracts/messages/users.messages';
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
-import { CurrentUser, type RequestUser } from '../auth/jwt-auth.guard';
+import { CurrentUser, Public, type RequestUser } from '../auth/jwt-auth.guard';
+import {
+  ConfirmEmailChangeDto,
+  StartEmailChangeDto,
+  UpdateUserDto,
+} from './dto/update-user.dto';
 import { UserParamsDto } from './dto/user-params.dto';
 import {
   PROFILE_READ_RATE_LIMIT,
@@ -62,9 +76,92 @@ export class UsersController {
       // whole of the IDOR defence in §1.6.
       viewerUserId: viewer.id,
       viewerRoles: viewer.roles,
-      correlationId:
-        (request.headers[CORRELATION_ID_HEADER] as string | undefined) ??
-        String(request.id ?? randomUUID()),
+      correlationId: correlationId(request),
     });
   }
+
+  /**
+   * docs/PROFILE-UPDATE.md §3. Self, or the holder of `users@update` — decided
+   * in identity for the same reason the read is, and with its own permission so
+   * a role can be given sight of a profile without the power to change it.
+   *
+   * A field this caller may not write is **refused**, not dropped. Silently
+   * ignoring it would leave the client believing a change it can see in its own
+   * form actually happened.
+   */
+  @Patch(':userId')
+  @Throttle({ default: { limit: 60, ttl: HOUR_MS } })
+  @ProfileReadLimit(60, HOUR_MS)
+  updateProfile(
+    @Param() params: UserParamsDto,
+    @Body() patch: UpdateUserDto,
+    @CurrentUser() viewer: RequestUser,
+    @Req() request: FastifyRequest,
+  ): Promise<UserProfile> {
+    return this.users.updateProfile({
+      targetUserId: params.userId,
+      viewerUserId: viewer.id,
+      viewerRoles: viewer.roles,
+      patch,
+      correlationId: correlationId(request),
+    });
+  }
+
+  /**
+   * §4. Self only — there is no permission that opens this to anyone else,
+   * because an administrator has the direct path and does not need to
+   * impersonate a confirmation.
+   *
+   * Tighter than the rest: this one sends mail to an address the caller chose,
+   * so the per-IP ceiling is what stops it being used to post letters.
+   */
+  @Post(':userId/email-change')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: HOUR_MS } })
+  startEmailChange(
+    @Param() params: UserParamsDto,
+    @Body() dto: StartEmailChangeDto,
+    @CurrentUser() viewer: RequestUser,
+    @Req() request: FastifyRequest,
+  ): Promise<StartEmailChangeResponse> {
+    return this.users.startEmailChange({
+      targetUserId: params.userId,
+      viewerUserId: viewer.id,
+      newEmail: dto.newEmail,
+      correlationId: correlationId(request),
+    });
+  }
+
+  /**
+   * §4.2, and `@Public()` deliberately: the link is opened in the *new* mailbox,
+   * usually on another device that has no session. What authorises the change
+   * is the secret — which only the holder of that mailbox received, and which
+   * an authenticated Self had to ask for in the first place. Requiring a
+   * session here would break the ordinary case without adding a factor the
+   * initiating request had not already supplied.
+   */
+  @Post(':userId/email-change/confirm')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
+  confirmEmailChange(
+    @Param() params: UserParamsDto,
+    @Body() dto: ConfirmEmailChangeDto,
+    @Req() request: FastifyRequest,
+  ): Promise<ConfirmEmailChangeResponse> {
+    return this.users.confirmEmailChange({
+      targetUserId: params.userId,
+      challengeId: dto.challengeId,
+      code: dto.code,
+      token: dto.token,
+      correlationId: correlationId(request),
+    });
+  }
+}
+
+function correlationId(request: FastifyRequest): string {
+  return (
+    (request.headers[CORRELATION_ID_HEADER] as string | undefined) ??
+    String(request.id ?? randomUUID())
+  );
 }
