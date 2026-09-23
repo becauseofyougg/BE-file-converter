@@ -56,7 +56,6 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   verificationTokens VerificationToken[]
-  refreshTokens      RefreshToken[]
   roles              UserRoleAssignment[]
 
   @@map("users")
@@ -183,32 +182,11 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-/// An opaque, random refresh token — hashed, single use, rotated on every
-/// refresh. Opaque rather than a second JWT because the whole point is that it
-/// can be revoked, which a self-contained token cannot be.
-model RefreshToken {
-  id     String @id @default(uuid()) @db.Uuid
-  userId String @map("user_id") @db.Uuid
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  tokenHash String @unique(map: "uq_refresh_tokens_hash") @map("token_hash") @db.Char(64)
-
-  /// Links every token descended from one login, so a replayed token can
-  /// revoke the whole family rather than guess which holder is legitimate.
-  familyId String @map("family_id") @db.Uuid
-
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
-  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
-
-  userAgent String? @map("user_agent") @db.VarChar(255)
-  ip        String? @db.Inet
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  @@index([familyId], map: "idx_refresh_tokens_family")
-  @@map("refresh_tokens")
-}
+// There is deliberately no `refresh_tokens` model. docs/AUTHORIZATION.md §1
+// forbids a server-side record of a refresh token — no allowlist, no denylist,
+// no session row — so the refresh token is a self-contained JWT and this schema
+// has nothing to say about it. The table that used to be here was dropped in
+// `20260922160000_drop_refresh_tokens`.
 
 /// A domain event written in the same transaction as the state change it
 /// describes, and published to the broker afterwards by the relay. Publishing

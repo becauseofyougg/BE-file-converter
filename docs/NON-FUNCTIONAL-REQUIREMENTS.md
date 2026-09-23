@@ -39,7 +39,7 @@ The ones the API in §8 of the architecture actually demands:
 | `conversion_jobs` | partial on `status` where non-terminal | queue-depth / stuck-job metrics |
 | `job_events` | `(job_id, created_at)` | job timeline for one job |
 | `users` | `UNIQUE (email)` on `CITEXT` | login, registration uniqueness — uniqueness *and* lookup |
-| `refresh_tokens` | `(user_id)`, `UNIQUE (token_hash)` | refresh rotation, family revocation |
+| `verification_tokens` | `(user_id, type)`, `(token_hash)` | quoting a challenge back; magic-link lookup |
 | `notifications` | `UNIQUE (user_id, type, ref_id)` | idempotency on message redelivery |
 | `outbox` | partial on `(sent_at IS NULL)` | relay polling only unsent rows |
 

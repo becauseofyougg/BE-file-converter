@@ -14,8 +14,10 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
+import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { TokenPair } from '@contracts/messages/identity.messages';
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
+import { AppError } from '@core/errors/app-error';
 import { AuthService, type CallerContext } from './auth.service';
 import {
   ConfirmLoginDto,
@@ -30,6 +32,11 @@ import {
   EmailRateLimitGuard,
 } from './email-rate-limit.guard';
 import { Public } from './jwt-auth.guard';
+import {
+  REFRESH_TOKEN_COOKIE,
+  SessionCookiesService,
+  readCookie,
+} from './session-cookies.service';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -43,7 +50,10 @@ const EmailLimit = (limit: number, ttlMs: number) =>
 @Public()
 @UseGuards(EmailRateLimitGuard)
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly cookies: SessionCookiesService,
+  ) {}
 
   /**
    * `201` with a session when confirmation is off, `202` without one when it
@@ -70,7 +80,7 @@ export class AuthController {
       return {
         status: result.status,
         userId: result.userId,
-        ...this.withRefreshCookie(reply, result.tokens),
+        ...this.withSessionCookies(reply, result.tokens),
       };
     }
 
@@ -109,7 +119,7 @@ export class AuthController {
       return {
         status: result.status,
         userId: result.userId,
-        ...this.withRefreshCookie(reply, result.tokens),
+        ...this.withSessionCookies(reply, result.tokens),
       };
     }
 
@@ -142,7 +152,7 @@ export class AuthController {
     return {
       status: result.status,
       userId: result.userId,
-      ...this.withRefreshCookie(reply, result.tokens),
+      ...this.withSessionCookies(reply, result.tokens),
     };
   }
 
@@ -180,7 +190,7 @@ export class AuthController {
     return {
       status: result.status,
       userId: result.userId,
-      ...this.withRefreshCookie(reply, result.tokens),
+      ...this.withSessionCookies(reply, result.tokens),
     };
   }
 
@@ -205,27 +215,74 @@ export class AuthController {
   }
 
   /**
-   * The refresh token goes in an httpOnly cookie and never into the body, so
-   * no script on the page can read it; the access token goes in the body,
-   * because it is meant to be read and attached to requests. `SameSite=Strict`
-   * is what keeps the cookie from riding along on a cross-site request.
+   * Exchanges the refresh cookie for a new pair — docs/AUTHORIZATION.md §4.
+   * Both cookies are replaced, since rotation is required and half a rotation
+   * would leave the old refresh token live for another thirty days.
+   *
+   * `@Public()` by inheritance, and necessarily so: this is the endpoint a
+   * client reaches for precisely *because* its access token has expired.
    */
-  private withRefreshCookie(
-    reply: FastifyReply,
-    tokens: TokenPair,
-  ): { accessToken: string; accessTokenExpiresAt: string } {
-    void reply.setCookie('refresh_token', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/auth',
-      signed: true,
-    });
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  // Roomy, because a legitimate client refreshes about four times an hour and
+  // several tabs may each do it. It is still a ceiling on anyone replaying a
+  // stolen token to keep a session alive indefinitely.
+  @Throttle({ default: { limit: 60, ttl: HOUR_MS } })
+  async refresh(
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const refreshToken = readCookie(request, REFRESH_TOKEN_COOKIE);
+
+    if (!refreshToken) {
+      // Same answer as a rejected token. "You have no cookie" and "your cookie
+      // is no good" lead a client to the same place: the login form.
+      throw new AppError(
+        ERROR_CODES.UNAUTHENTICATED,
+        'The session has expired; sign in again',
+        401,
+      );
+    }
+
+    const result = await this.auth.refresh(
+      refreshToken,
+      callerContext(request),
+    );
 
     return {
-      accessToken: tokens.accessToken,
-      accessTokenExpiresAt: tokens.accessTokenExpiresAt,
+      status: result.status,
+      userId: result.userId,
+      ...this.withSessionCookies(reply, result.tokens),
     };
+  }
+
+  /**
+   * Clears both cookies. That is the entirety of a logout here: with no
+   * server-side record of a refresh token there is nothing to revoke, and the
+   * tokens stay valid until they expire — docs/AUTHORIZATION.md §5.
+   *
+   * It answers `204` unconditionally, including when no session was there to
+   * begin with, because a client's next move is the same either way.
+   */
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  logout(@Res({ passthrough: true }) reply: FastifyReply): void {
+    this.cookies.clear(reply);
+  }
+
+  /**
+   * Both tokens go into httpOnly cookies and neither is returned in the body,
+   * so no script on the page can read either one. The body carries only when
+   * the access token dies, which is what a client needs in order to refresh
+   * before a request fails rather than after.
+   */
+  private withSessionCookies(
+    reply: FastifyReply,
+    tokens: TokenPair,
+  ): { accessTokenExpiresAt: string } {
+    this.cookies.issue(reply, tokens);
+
+    return { accessTokenExpiresAt: tokens.accessTokenExpiresAt };
   }
 }
 

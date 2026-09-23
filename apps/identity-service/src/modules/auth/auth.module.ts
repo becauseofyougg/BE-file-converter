@@ -9,6 +9,7 @@ import { AuthService } from './auth.service';
 import { AuthSettingsService } from './auth-settings.service';
 import { LoginService } from './login.service';
 import { PasswordService } from './password.service';
+import { RefreshService } from './refresh.service';
 import { VerificationCleanupJob } from './verification-cleanup.job';
 import { VerificationService } from './verification.service';
 
@@ -18,11 +19,12 @@ import { VerificationService } from './verification.service';
   providers: [
     AuthService,
     LoginService,
+    RefreshService,
     AuthSettingsService,
     PasswordService,
     VerificationService,
     VerificationCleanupJob,
   ],
-  exports: [AuthService, LoginService, AuthSettingsService],
+  exports: [AuthService, LoginService, RefreshService, AuthSettingsService],
 })
 export class AuthModule {}

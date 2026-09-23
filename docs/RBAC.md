@@ -91,9 +91,12 @@ identity is.
 **Roles travel in the access token.** `{ sub, roles, jti }`. That is what makes the decision free.
 The cost, accepted deliberately: **revoking a role takes effect only when the token expires**, up to
 `JWT_ACCESS_TTL` (15 minutes). Rule changes — grants, permissions — apply immediately, because those
-live in the cached config rather than in the token. Only role *assignment* lags. If that window ever
-becomes unacceptable, the fix is refresh-token revocation plus a shorter access TTL, not a per-request
-lookup.
+live in the cached config rather than in the token. Only role *assignment* lags.
+
+The roles **are** re-read from the database on every refresh, so 15 minutes is the whole of the
+window and not the start of one: a revoked role survives at most one access-token lifetime, then the
+next refresh signs a token without it ([AUTHORIZATION.md §4](AUTHORIZATION.md#4-post-authrefresh)).
+If that window ever becomes unacceptable, the fix is a shorter access TTL, not a per-request lookup.
 
 ---
 
@@ -231,8 +234,10 @@ config version:
 
 ## 11. Still open
 
-1. Revoking a role leaves the existing token valid for up to 15 minutes (§4). Acceptable, or does this
-   need refresh-token revocation first?
+1. Revoking a role leaves the existing token valid for up to 15 minutes (§4), after which the refresh
+   re-reads it. Shortening that further means shortening `JWT_ACCESS_TTL`; nothing can shorten it to
+   zero, since refresh tokens are not stored and there is nothing to revoke
+   ([AUTHORIZATION.md §5](AUTHORIZATION.md#5-post-authlogout-and-what-it-cannot-do)).
 2. Ownership ("this job is mine") is not RBAC and is not built. It belongs with the conversions
    endpoints.
 3. `rbac.check` exists for services that hold no cache. Nothing calls it yet — the gateway is the only

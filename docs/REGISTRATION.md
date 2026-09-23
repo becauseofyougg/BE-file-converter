@@ -106,11 +106,12 @@ failure mode is a user who exists and never gets a letter, or a letter about a u
 
 ### 4.3 Responses
 
-**A — confirmation off:** `201 Created`, access token in the body, refresh token in an httpOnly
-`SameSite=Strict` cookie (matching the scheme in [ARCHITECTURE.md §10](ARCHITECTURE.md#10-security)).
+**A — confirmation off:** `201 Created`, with the session in two httpOnly cookies — `access_token` and
+`refresh_token` ([AUTHORIZATION.md §3](AUTHORIZATION.md#3-cookies-and-what-a-request-looks-like)).
+Neither token appears in the body.
 
 ```jsonc
-{ "user": { "id": "...", "email": "user@example.com" }, "accessToken": "..." }
+{ "status": "registered", "userId": "...", "accessTokenExpiresAt": "..." }
 ```
 
 **B — confirmation on:** `202 Accepted`, no tokens.
@@ -207,7 +208,7 @@ sequenceDiagram
   C->>GW: POST /auth/verify-email {challengeId, code}
   GW->>ID: RPC auth.verifyEmail
   Note over ID: constant-time compare,<br/>TTL + attempts, mark used
-  ID-->>GW: 200 {accessToken} + refresh cookie
+  ID-->>GW: 200 + access & refresh cookies
   GW-->>C: 200 verified & signed in
 ```
 
@@ -327,9 +328,13 @@ addresses are masked in production logs.
 ## 12. Resources and decisions to confirm
 
 **JWT.** Access token 15 min, `HS256` with a secret from env (or `RS256` if other services must verify
-locally without calling identity); refresh token opaque and random, stored hashed, rotated on every use,
-with reuse detection revoking the whole family. Payload carries `sub`, `roles`, `jti`, `exp` — no email,
-no personal data, since a JWT is signed but not secret.
+locally without calling identity). Payload carries `sub`, `roles`, `jti`, `exp` — no email, no personal
+data, since a JWT is signed but not secret.
+
+*Superseded:* this section originally specified an opaque refresh token, stored hashed, with reuse
+detection revoking the whole family. [AUTHORIZATION.md §1](AUTHORIZATION.md) forbids storing refresh
+state at all, so the refresh token is now a second JWT and there is nothing left to detect reuse
+against.
 
 **Password storage.** `argon2id` via the `argon2` package (§10). Not bcrypt: its 72-byte input limit is a
 silent truncation trap, and it is not memory-hard, which is exactly what GPU cracking exploits.
@@ -361,11 +366,12 @@ does not send a second letter.
 Two events were added beyond those the architecture listed, both consumed by
 `notification-service`: `user.verification_resent` and `user.registration_attempted` (§8).
 
-**Not yet built:** login, refresh rotation and password reset, which is why `refresh_tokens` is
-written but never yet read back, and why `AUTH_CONFIRM_LOGIN` and `AUTH_CONFIRM_PASSWORD_RESET` are
-read by the settings service but not acted on. The mail templates themselves belong to
-`notification-service` and are still to come — identity publishes the events, nothing consumes them
-yet.
+Login is [AUTHENTICATION.md](AUTHENTICATION.md); sessions, refresh and logout are
+[AUTHORIZATION.md](AUTHORIZATION.md).
+
+**Not yet built:** password reset, which is why `AUTH_CONFIRM_PASSWORD_RESET` is read by the settings
+service but not acted on. The mail templates themselves belong to `notification-service` and are still
+to come — identity publishes the events, nothing consumes them yet.
 
 **Still to confirm with the mentor:**
 

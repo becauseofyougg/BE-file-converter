@@ -1,0 +1,11 @@
+-- Refresh tokens are no longer stored anywhere on the server.
+--
+-- docs/AUTHORIZATION.md §1 forbids it outright: no allowlist, no denylist, no
+-- persisted `jti` and no session identifier tied to a refresh token. A refresh
+-- token is now a self-contained JWT signed with `JWT_REFRESH_SECRET`, so this
+-- table had no reader left — it was written on every login and never consulted.
+--
+-- This drops live sessions along with it, which is exactly what it looks like:
+-- the rows here were the only record of them. Every user signs in again once.
+-- Nothing else references the table, so there is no cascade to consider.
+DROP TABLE IF EXISTS "refresh_tokens";

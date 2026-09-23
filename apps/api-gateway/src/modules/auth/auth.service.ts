@@ -5,6 +5,7 @@ import {
   IDENTITY_PATTERNS,
   type ConfirmLoginResponse,
   type LoginResponse,
+  type RefreshResponse,
   type RegisterResponse,
   type ResendVerificationResponse,
   type VerifyEmailResponse,
@@ -80,6 +81,23 @@ export class AuthService {
       this.identity,
       IDENTITY_PATTERNS.CONFIRM_LOGIN,
       { ...input, ...caller },
+    );
+  }
+
+  /**
+   * The gateway holds the access secret and could verify a refresh token
+   * locally, but it does not hold the refresh secret and has no way to re-read
+   * the account's roles — which is the point of refreshing at all. Identity
+   * stays the only issuer.
+   */
+  refresh(
+    refreshToken: string,
+    caller: CallerContext,
+  ): Promise<RefreshResponse> {
+    return sendRpc<RefreshResponse, Record<string, unknown>>(
+      this.identity,
+      IDENTITY_PATTERNS.REFRESH,
+      { refreshToken, correlationId: caller.correlationId },
     );
   }
 

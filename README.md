@@ -144,7 +144,13 @@ shared by both services so they cannot disagree. It fails closed — an unknown 
 config or a role nobody recognises all deny.
 
 Roles travel inside the access token, so a decision costs no I/O; the trade-off is that revoking a
-role takes effect only when the token expires. Full reasoning in [docs/RBAC.md](docs/RBAC.md).
+role takes effect only when the token expires, 15 minutes later at worst, since the next refresh
+re-reads them. Full reasoning in [docs/RBAC.md](docs/RBAC.md).
+
+Sessions themselves are two JWTs in httpOnly cookies — access (15 min) and refresh (30 days), rotated
+as a pair. **No refresh state is stored**, so there is no server-side logout and no "sign out
+everywhere"; [docs/AUTHORIZATION.md](docs/AUTHORIZATION.md) sets out what that costs and what limits
+it.
 
 There is no seeded administrator — §8 of that document has the one-line SQL to promote the first one.
 

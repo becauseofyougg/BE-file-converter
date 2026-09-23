@@ -95,6 +95,7 @@ describe('AuthService', () => {
         accessToken: 'access',
         refreshToken: 'refresh',
         accessTokenExpiresAt: new Date().toISOString(),
+        refreshTokenExpiresAt: new Date().toISOString(),
       }),
       revokeAllForUser: jest.fn(),
     } as unknown as jest.Mocked<TokensService>;

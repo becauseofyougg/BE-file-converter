@@ -113,10 +113,26 @@ export interface ConfirmLoginResponse {
   tokens: TokenPair;
 }
 
+/** Carried by the `refresh_token` cookie — docs/AUTHORIZATION.md §2. */
+export interface RefreshRequest {
+  refreshToken: string;
+}
+
+export interface RefreshResponse {
+  status: 'refreshed';
+  userId: string;
+  tokens: TokenPair;
+}
+
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
   accessTokenExpiresAt: string;
+  /**
+   * The gateway sizes the cookie's `maxAge` from this rather than from a TTL of
+   * its own, so the cookie and the token cannot drift apart.
+   */
+  refreshTokenExpiresAt: string;
 }
 
 export interface AuthenticatedUser {
@@ -139,6 +155,29 @@ export interface AccessTokenClaims {
   sub: string;
   roles: string[];
   jti: string;
+  iat?: number;
+  exp?: number;
+}
+
+/**
+ * Marks a token as the refresh half of a pair. Two tokens signed with the same
+ * algorithm are interchangeable unless something in the payload says otherwise,
+ * and a 30-day refresh presented as a 15-minute access token would be a
+ * privilege escalation — so the type is checked as well as the signature, and
+ * the two are signed with different secrets besides.
+ */
+export const REFRESH_TOKEN_TYPE = 'refresh';
+
+/**
+ * No roles: a refresh token authorises nothing on its own, it only proves which
+ * account may be re-issued a session. The roles are re-read from the database
+ * at every refresh, which is the one moment a revoked role can take effect —
+ * see docs/AUTHORIZATION.md §4.
+ */
+export interface RefreshTokenClaims {
+  sub: string;
+  jti: string;
+  typ: typeof REFRESH_TOKEN_TYPE;
   iat?: number;
   exp?: number;
 }
