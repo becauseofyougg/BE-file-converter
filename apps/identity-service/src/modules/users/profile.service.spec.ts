@@ -17,6 +17,7 @@ function buildUser(overrides: Partial<User> = {}): User {
     emailVerifiedAt: new Date(),
     failedLoginAttempts: 0,
     lockedUntil: null,
+    deletedAt: null,
     displayName: 'Target',
     photoKey: 'profile-photos/target.jpg',
     createdAt: new Date('2026-01-01T00:00:00.000Z'),

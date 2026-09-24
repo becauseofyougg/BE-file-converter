@@ -76,6 +76,8 @@ export const VERIFICATION_TOKEN_TYPES = {
    * cannot be swapped between issuing the code and quoting it back.
    */
   EMAIL_CHANGE: 'email_change',
+  /** A pending account erasure — docs/ACCOUNT-DELETION.md §4. */
+  ACCOUNT_DELETION: 'account_deletion',
   PASSWORD_RESET: 'password_reset',
 } as const;
 

@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { VerificationModule } from '../auth/verification.module';
 import { OutboxModule } from '../outbox/outbox.module';
 import { RbacModule } from '../rbac/rbac.module';
+import { AccountDeletionService } from './account-deletion.service';
 import { EmailChangeService } from './email-change.service';
 import { ProfileUpdateService } from './profile-update.service';
 import { ProfileService } from './profile.service';
@@ -20,6 +21,7 @@ import { UsersService } from './users.service';
     ProfileService,
     ProfileUpdateService,
     EmailChangeService,
+    AccountDeletionService,
   ],
   exports: [UsersService, ProfileService],
 })

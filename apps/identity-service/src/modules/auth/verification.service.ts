@@ -47,6 +47,9 @@ const LINK_TTL_BY_TYPE: Record<VerificationTokenType, number> = {
   // A live email-change link moves the account to whoever opens it, so it gets
   // the short life a login link gets rather than registration's day.
   [VERIFICATION_TOKEN_TYPES.EMAIL_CHANGE]: 10 * 60 * 1000,
+  // Irreversible, so it gets the shortest life of all: a link that can erase an
+  // account should not still work tomorrow.
+  [VERIFICATION_TOKEN_TYPES.ACCOUNT_DELETION]: 10 * 60 * 1000,
   [VERIFICATION_TOKEN_TYPES.PASSWORD_RESET]: 60 * 60 * 1000,
 };
 

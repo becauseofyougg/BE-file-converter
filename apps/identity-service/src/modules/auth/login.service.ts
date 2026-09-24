@@ -17,6 +17,7 @@ import { UserRolesService } from '../rbac/user-roles.service';
 import { TokensService, type SessionContext } from '../tokens/tokens.service';
 import {
   UsersService,
+  isDeleted,
   isEmailVerified,
   normalizeEmail,
   type User,
@@ -75,9 +76,14 @@ export class LoginService {
     const email = normalizeEmail(input.email);
     const user = await this.users.findByEmail(email);
 
-    if (!user) {
+    // An erased account cannot be reached by its old address anyway — the
+    // column was overwritten — but the check is explicit so the behaviour does
+    // not rest on that one detail. It is folded into the same refusal as an
+    // unknown address, and burns the same time, because "this account was
+    // deleted" is exactly the kind of thing §3 says not to disclose.
+    if (!user || isDeleted(user)) {
       await this.passwords.burnVerificationTime();
-      this.logFailure('unknown_account');
+      this.logFailure(user ? 'account_deleted' : 'unknown_account', user?.id);
 
       throw invalidCredentials();
     }

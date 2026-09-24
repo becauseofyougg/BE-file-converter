@@ -12,7 +12,12 @@ import {
 import { AppError } from '@core/errors/app-error';
 import { RbacConfigService } from '../rbac/rbac-config.service';
 import { UserRolesService } from '../rbac/user-roles.service';
-import { UsersService, isEmailVerified, type User } from './users.service';
+import {
+  UsersService,
+  isDeleted,
+  isEmailVerified,
+  type User,
+} from './users.service';
 
 /**
  * Reading one user's profile — docs/USER-PROFILE.md.
@@ -43,7 +48,10 @@ export class ProfileService {
     // oracle for which user ids are real — an IDOR by another name (§1.6).
     const user = await this.users.findById(input.targetUserId);
 
-    if (!user) {
+    // An erased account is not there as far as this route is concerned. The row
+    // survives only so cross-service references resolve — see
+    // docs/ACCOUNT-DELETION.md §5.
+    if (!user || isDeleted(user)) {
       this.audit(input, 'not_found', audience);
 
       throw new AppError(ERROR_CODES.USER_NOT_FOUND, 'User not found', 404);

@@ -8,6 +8,7 @@ import {
 } from 'class-validator';
 
 import {
+  DELETION_REASON_MAX_LENGTH,
   DISPLAY_NAME_MAX_LENGTH,
   type UserPatch,
 } from '@contracts/messages/users.messages';
@@ -42,6 +43,31 @@ export class StartEmailChangeDto {
   @IsEmail()
   @MaxLength(254)
   newEmail: string;
+}
+
+export class DeleteUserDto {
+  /** Free text for the audit trail. It changes nothing about the erasure. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(DELETION_REASON_MAX_LENGTH)
+  reason?: string;
+}
+
+/** Variant A quotes a code against a challenge; variant B carries a link token. */
+export class ConfirmDeletionDto {
+  @IsOptional()
+  @IsUUID()
+  challengeId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(OTP_LENGTH, OTP_LENGTH)
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  token?: string;
 }
 
 /** Variant A quotes a code against a challenge; variant B carries a link token. */

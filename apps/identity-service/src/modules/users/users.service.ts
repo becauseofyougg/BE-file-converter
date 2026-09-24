@@ -3,9 +3,16 @@ import { TransactionHost } from '@nestjs-cls/transactional';
 import { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 import type { User } from '@prisma-clients/identity';
 
+import { anonymizedEmail } from '@contracts/messages/users.messages';
 import { PrismaService } from '../../database/prisma.service';
 
 export type { User };
+
+/**
+ * Deliberately not a valid argon2 encoding, so `PasswordService.verify` throws
+ * internally and returns false rather than ever comparing anything.
+ */
+const ERASED_PASSWORD_HASH = 'erased';
 
 /**
  * Normalising here rather than at each call site is what keeps `User@x.com`
@@ -18,6 +25,14 @@ export function normalizeEmail(email: string): string {
 
 export function isEmailVerified(user: Pick<User, 'emailVerifiedAt'>): boolean {
   return user.emailVerifiedAt !== null;
+}
+
+/**
+ * An erased account — docs/ACCOUNT-DELETION.md. The row is still there, and
+ * every read path outside the deletion flow treats this as "no such user".
+ */
+export function isDeleted(user: Pick<User, 'deletedAt'>): boolean {
+  return user.deletedAt !== null;
 }
 
 @Injectable()
@@ -132,6 +147,70 @@ export class UsersService {
       where: { id: userId },
       data: { emailVerifiedAt: new Date() },
     });
+  }
+
+  /**
+   * Empties the row of everything personal and marks it erased —
+   * docs/ACCOUNT-DELETION.md §5.
+   *
+   * One statement. Every column that says anything about a person is
+   * overwritten rather than left to a later pass: a two-step erasure has a
+   * window in which the data is still there and the account already looks gone,
+   * and nothing guarantees the second step ever runs.
+   *
+   * The address becomes a unique unroutable placeholder rather than null, so
+   * the `citext` unique index still holds and the address the account used is
+   * free for somebody else to register.
+   */
+  anonymize(userId: string): Promise<User> {
+    return this.db.user.update({
+      where: { id: userId },
+      data: {
+        email: anonymizedEmail(userId),
+        displayName: null,
+        photoKey: null,
+        // Not a valid argon2 string, so `verify` refuses it outright. The
+        // account is unreachable anyway — the address it used no longer
+        // matches — but leaving a real hash of a real password in a row that
+        // has supposedly been erased would defeat the whole exercise.
+        passwordHash: ERASED_PASSWORD_HASH,
+        emailVerifiedAt: null,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        deletedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Every live challenge the user holds, spent at once. A code mailed before
+   * the erasure must not still be usable after it.
+   *
+   * `newEmail` is cleared on all of them, spent or not: an abandoned
+   * `email_change` challenge holds an address the user typed, which is personal
+   * data that would otherwise outlive the account it belongs to.
+   */
+  async invalidateChallenges(userId: string): Promise<number> {
+    await this.db.verificationToken.updateMany({
+      where: { userId, newEmail: { not: null } },
+      data: { newEmail: null },
+    });
+
+    const result = await this.db.verificationToken.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    return result.count;
+  }
+
+  /** Strips the user of every role, so nothing is granted to a dead account. */
+  async clearRoles(userId: string): Promise<number> {
+    const result = await this.db.userRoleAssignment.deleteMany({
+      where: { userId },
+    });
+
+    return result.count;
   }
 
   /**

@@ -8,7 +8,6 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { EmailRateLimitGuard } from './email-rate-limit.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import { SessionCookiesService } from './session-cookies.service';
 
 @Module({
   // For `ThrottlerStorage`, which the per-email guard counts in. An export is
@@ -18,7 +17,6 @@ import { SessionCookiesService } from './session-cookies.service';
   controllers: [AuthController],
   providers: [
     AuthService,
-    SessionCookiesService,
     EmailRateLimitGuard,
     // Registered globally and in this order: authenticate, then authorise.
     // Opt-*out* via `@Public()`, so a new controller is protected by default

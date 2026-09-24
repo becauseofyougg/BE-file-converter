@@ -8,12 +8,19 @@ import {
 
 import {
   USERS_PATTERNS,
+  type ConfirmDeletionResponse,
   type ConfirmEmailChangeResponse,
+  type DeleteUserResponse,
   type StartEmailChangeResponse,
   type UserProfileRecord,
 } from '@contracts/messages/users.messages';
 import { RpcAppExceptionFilter } from '@core/errors/rpc-app-exception.filter';
 import { settleRpc } from '@core/messaging/rmq-ack';
+import { AccountDeletionService } from './account-deletion.service';
+import {
+  ConfirmDeletionMessageDto,
+  DeleteUserMessageDto,
+} from './dto/delete-user.dto';
 import { GetUserProfileMessageDto } from './dto/get-profile.dto';
 import {
   ConfirmEmailChangeMessageDto,
@@ -39,6 +46,7 @@ export class UsersController {
     private readonly profiles: ProfileService,
     private readonly updates: ProfileUpdateService,
     private readonly emailChange: EmailChangeService,
+    private readonly deletion: AccountDeletionService,
   ) {}
 
   /**
@@ -100,6 +108,39 @@ export class UsersController {
     return settleRpc(context, () =>
       this.emailChange.confirm({
         targetUserId: dto.targetUserId,
+        challengeId: dto.challengeId,
+        code: dto.code,
+        token: dto.token,
+        correlationId: dto.correlationId,
+      }),
+    );
+  }
+
+  @MessagePattern(USERS_PATTERNS.DELETE_USER)
+  async deleteUser(
+    @Payload(messageValidationPipe) dto: DeleteUserMessageDto,
+    @Ctx() context: RmqContext,
+  ): Promise<DeleteUserResponse> {
+    return settleRpc(context, () =>
+      this.deletion.requestDeletion({
+        targetUserId: dto.targetUserId,
+        viewerUserId: dto.viewerUserId,
+        viewerRoles: dto.viewerRoles,
+        reason: dto.reason,
+        correlationId: dto.correlationId,
+      }),
+    );
+  }
+
+  @MessagePattern(USERS_PATTERNS.CONFIRM_DELETION)
+  async confirmDeletion(
+    @Payload(messageValidationPipe) dto: ConfirmDeletionMessageDto,
+    @Ctx() context: RmqContext,
+  ): Promise<ConfirmDeletionResponse> {
+    return settleRpc(context, () =>
+      this.deletion.confirmDeletion({
+        targetUserId: dto.targetUserId,
+        viewerUserId: dto.viewerUserId,
         challengeId: dto.challengeId,
         code: dto.code,
         token: dto.token,
