@@ -3,7 +3,12 @@ import { ClientProxy } from '@nestjs/microservices';
 
 import {
   USERS_PATTERNS,
+  type ConfirmEmailChangeRequest,
+  type ConfirmEmailChangeResponse,
   type GetUserProfileRequest,
+  type StartEmailChangeRequest,
+  type StartEmailChangeResponse,
+  type UpdateUserProfileRequest,
   type UserProfile,
   type UserProfileRecord,
 } from '@contracts/messages/users.messages';
@@ -37,6 +42,36 @@ export class UsersService {
     );
 
     return this.toPublicProfile(record);
+  }
+
+  async updateProfile(input: UpdateUserProfileRequest): Promise<UserProfile> {
+    const record = await sendRpc<UserProfileRecord, Record<string, unknown>>(
+      this.identity,
+      USERS_PATTERNS.UPDATE_PROFILE,
+      { ...input },
+    );
+
+    return this.toPublicProfile(record);
+  }
+
+  startEmailChange(
+    input: StartEmailChangeRequest,
+  ): Promise<StartEmailChangeResponse> {
+    return sendRpc<StartEmailChangeResponse, Record<string, unknown>>(
+      this.identity,
+      USERS_PATTERNS.START_EMAIL_CHANGE,
+      { ...input },
+    );
+  }
+
+  confirmEmailChange(
+    input: ConfirmEmailChangeRequest,
+  ): Promise<ConfirmEmailChangeResponse> {
+    return sendRpc<ConfirmEmailChangeResponse, Record<string, unknown>>(
+      this.identity,
+      USERS_PATTERNS.CONFIRM_EMAIL_CHANGE,
+      { ...input },
+    );
   }
 
   /**

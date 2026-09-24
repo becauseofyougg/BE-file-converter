@@ -1,17 +1,26 @@
 import { Module } from '@nestjs/common';
 
+import { VerificationModule } from '../auth/verification.module';
+import { OutboxModule } from '../outbox/outbox.module';
 import { RbacModule } from '../rbac/rbac.module';
+import { EmailChangeService } from './email-change.service';
+import { ProfileUpdateService } from './profile-update.service';
 import { ProfileService } from './profile.service';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
 @Module({
-  // For the RBAC config and the role names: reading a profile needs to answer
-  // "may this viewer see someone else's" and, for self, "which roles do they
-  // hold" — docs/USER-PROFILE.md §3.
-  imports: [RbacModule],
+  // RbacModule for the config and the role names; OutboxModule to announce an
+  // address change; VerificationModule for the challenge lifecycle, which the
+  // email change reuses rather than reimplementing — docs/PROFILE-UPDATE.md §4.
+  imports: [RbacModule, OutboxModule, VerificationModule],
   controllers: [UsersController],
-  providers: [UsersService, ProfileService],
+  providers: [
+    UsersService,
+    ProfileService,
+    ProfileUpdateService,
+    EmailChangeService,
+  ],
   exports: [UsersService, ProfileService],
 })
 export class UsersModule {}

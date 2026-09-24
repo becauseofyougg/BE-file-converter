@@ -238,8 +238,8 @@ job; the API is designed so that change is additive (`POST /conversions/presign`
 **identity DB** — RBAC lives here too: `roles` · `permissions` · `grants` · `user_roles`, and a user
 holds *many* roles, so the single `role` column is gone ([RBAC.md](RBAC.md) §2) ·
 `users` (id, email `UNIQUE CITEXT`, password_hash, email_verified_at,
-created_at, updated_at, failed_login_attempts, locked_until, photo_key) ·
-`verification_tokens` (id, user_id, type, token_hash, expires_at, used_at).
+created_at, updated_at, failed_login_attempts, locked_until, photo_key, display_name) ·
+`verification_tokens` (id, user_id, type, token_hash, expires_at, used_at, new_email).
 
 There is deliberately **no** `refresh_tokens` table: refresh state may not be stored on the server
 ([AUTHORIZATION.md §1](AUTHORIZATION.md)), so the refresh token is a self-contained JWT.
@@ -268,7 +268,8 @@ Token tables store **hashes**, never the raw token.
 | `POST` | `/auth/logout` | clears the cookies — there is nothing to revoke |
 | `POST` | `/auth/verify-email` · `/auth/forgot-password` · `/auth/reset-password` | |
 | `GET` | `/users/:userId` | self, or the holder of `users@read`; fields filtered per audience |
-| `PATCH` | `/users/:userId` | not built |
+| `PATCH` | `/users/:userId` | self, or `users@update`; self may not set `email` here |
+| `POST` | `/users/:userId/email-change` · `.../confirm` | self-service address change, proved by code or link |
 | `GET` | `/formats` | conversion matrix, derived from the registry |
 | `POST` | `/conversions` | multipart: file + `targetFormat` + options → **`202` `{ jobId }`** |
 | `GET` | `/conversions` | own jobs, paginated, filter by status |

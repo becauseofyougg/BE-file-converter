@@ -51,7 +51,7 @@ export class ProfileService {
 
     this.audit(input, 'ok', audience);
 
-    return await this.project(user, audience);
+    return await this.projectFor(user, audience);
   }
 
   private async audienceFor(
@@ -82,7 +82,7 @@ export class ProfileService {
    * someone names it in the policy on purpose, which is what makes the
    * default-deny of §1.4 hold by construction rather than by remembering.
    */
-  private async project(
+  async projectFor(
     user: User,
     audience: ProfileAudience,
   ): Promise<UserProfileRecord> {
@@ -94,6 +94,9 @@ export class ProfileService {
           break;
         case 'email':
           record.email = user.email;
+          break;
+        case 'displayName':
+          record.displayName = user.displayName;
           break;
         case 'photo':
           // The public field is `photo`; what travels is the storage key, and

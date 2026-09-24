@@ -70,6 +70,12 @@ export const VERIFICATION_TOKEN_TYPES = {
   EMAIL_VERIFICATION: 'email_verification',
   /** A login waiting to be confirmed — docs/AUTHENTICATION.md §1.3. */
   LOGIN_CONFIRMATION: 'login_confirmation',
+  /**
+   * A pending move to a new address — docs/PROFILE-UPDATE.md §4. The only type
+   * that carries a payload: the address being claimed lives on the row, so it
+   * cannot be swapped between issuing the code and quoting it back.
+   */
+  EMAIL_CHANGE: 'email_change',
   PASSWORD_RESET: 'password_reset',
 } as const;
 

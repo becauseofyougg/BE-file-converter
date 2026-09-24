@@ -36,8 +36,12 @@ export const ERROR_CODES = {
   ENTITY_IMMUTABLE: 'ENTITY_IMMUTABLE',
   INVALID_ACTION: 'INVALID_ACTION',
 
-  // users — see docs/USER-PROFILE.md
+  // users — see docs/USER-PROFILE.md and docs/PROFILE-UPDATE.md
   USER_NOT_FOUND: 'USER_NOT_FOUND',
+  /** A field this caller may not write, or may not write through this route. */
+  FIELD_NOT_WRITABLE: 'FIELD_NOT_WRITABLE',
+  /** The address is already on another account. */
+  EMAIL_IN_USE: 'EMAIL_IN_USE',
 
   // conversion
   UNSUPPORTED_CONVERSION: 'UNSUPPORTED_CONVERSION',
