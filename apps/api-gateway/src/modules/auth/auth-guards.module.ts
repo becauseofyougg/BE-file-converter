@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@core/config/config.service';
 import { GatewayConfig } from '../../config/gateway.config';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { SessionCookiesService } from './session-cookies.service';
 
 /**
  * Token verification, separate from `AuthModule` so the RBAC module can depend
@@ -12,6 +13,11 @@ import { JwtAuthGuard } from './jwt-auth.guard';
  *
  * Verification only: the gateway never signs a token. `signOptions` are absent
  * on purpose, so a mistake here cannot turn the edge into an issuer.
+ *
+ * `SessionCookiesService` lives here rather than in `AuthModule` because
+ * erasing an account clears the same cookies logging out does, and two modules
+ * writing session cookies through two copies of the rules is how they drift
+ * apart.
  */
 @Global()
 @Module({
@@ -24,7 +30,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
       }),
     }),
   ],
-  providers: [JwtAuthGuard],
-  exports: [JwtModule, JwtAuthGuard],
+  providers: [JwtAuthGuard, SessionCookiesService],
+  exports: [JwtModule, JwtAuthGuard, SessionCookiesService],
 })
 export class AuthGuardsModule {}

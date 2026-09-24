@@ -3,6 +3,10 @@ import { ClientProxy } from '@nestjs/microservices';
 
 import {
   USERS_PATTERNS,
+  type ConfirmDeletionRequest,
+  type ConfirmDeletionResponse,
+  type DeleteUserRequest,
+  type DeleteUserResponse,
   type ConfirmEmailChangeRequest,
   type ConfirmEmailChangeResponse,
   type GetUserProfileRequest,
@@ -70,6 +74,24 @@ export class UsersService {
     return sendRpc<ConfirmEmailChangeResponse, Record<string, unknown>>(
       this.identity,
       USERS_PATTERNS.CONFIRM_EMAIL_CHANGE,
+      { ...input },
+    );
+  }
+
+  deleteUser(input: DeleteUserRequest): Promise<DeleteUserResponse> {
+    return sendRpc<DeleteUserResponse, Record<string, unknown>>(
+      this.identity,
+      USERS_PATTERNS.DELETE_USER,
+      { ...input },
+    );
+  }
+
+  confirmDeletion(
+    input: ConfirmDeletionRequest,
+  ): Promise<ConfirmDeletionResponse> {
+    return sendRpc<ConfirmDeletionResponse, Record<string, unknown>>(
+      this.identity,
+      USERS_PATTERNS.CONFIRM_DELETION,
       { ...input },
     );
   }

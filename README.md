@@ -159,7 +159,9 @@ profile because it is yours, or someone else's because you hold `users@read`, an
 back differ between the two ([docs/USER-PROFILE.md](docs/USER-PROFILE.md)). `PATCH` works the same way
 on `users@update`, with one asymmetry — you may not set your own `email` there, because claiming an
 address means proving you can read mail sent to it
-([docs/PROFILE-UPDATE.md](docs/PROFILE-UPDATE.md)).
+([docs/PROFILE-UPDATE.md](docs/PROFILE-UPDATE.md)). `DELETE` erases an account by emptying its row
+rather than dropping it, so references from other services still resolve, and a user erasing their own
+has to prove their address first ([docs/ACCOUNT-DELETION.md](docs/ACCOUNT-DELETION.md)).
 
 ## Messaging
 

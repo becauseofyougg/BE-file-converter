@@ -29,6 +29,13 @@ export const DOMAIN_EVENTS = {
    * owner finds out that an account takeover has moved their account away.
    */
   USER_EMAIL_CHANGED: 'user.email_changed',
+  /** A user asked to erase their own account and has to confirm it first. */
+  USER_DELETION_REQUESTED: 'user.deletion_requested',
+  /**
+   * An account was erased. Every service holding data for that user is expected
+   * to purge its own on this — identity can only empty its own tables.
+   */
+  USER_DELETED: 'user.deleted',
   CONVERSION_COMPLETED: 'conversion.completed',
   CONVERSION_FAILED: 'conversion.failed',
 } as const;
@@ -113,6 +120,37 @@ export interface EmailChangedPayload {
   previousEmail: string;
   newEmail: string;
   /** Present when an administrator made the change rather than the user. */
+  actorUserId?: string;
+}
+
+/**
+ * Sent to the account's own address. The mail is the second factor: somebody
+ * who found an unlocked laptop has the session but not the mailbox.
+ */
+export interface DeletionRequestedPayload {
+  userId: string;
+  email: string;
+  method: 'otp' | 'link';
+  /** The code or link token — rendered by notification-service, never logged. */
+  secret: string;
+  expiresAt: string;
+}
+
+/**
+ * The one event that carries personal data *because* it is being destroyed:
+ * the address is here so a farewell notice can be sent, and the photo key so
+ * whoever owns that bucket can remove the object. Both are gone from the
+ * database by the time this is published, which is the point — a consumer that
+ * went looking for them afterwards would find nothing.
+ */
+export interface UserDeletedPayload {
+  userId: string;
+  /** The address the account had, for the confirmation notice. */
+  email: string;
+  /** The object to remove from storage, if the account had a photo. */
+  photoKey?: string | null;
+  deletedAt: string;
+  /** Present when an administrator did it rather than the user themselves. */
   actorUserId?: string;
 }
 

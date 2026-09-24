@@ -5,7 +5,11 @@ import type { RefreshResponse } from '@contracts/messages/identity.messages';
 import { AppError } from '@core/errors/app-error';
 import { UserRolesService } from '../rbac/user-roles.service';
 import { TokensService } from '../tokens/tokens.service';
-import { UsersService, isEmailVerified } from '../users/users.service';
+import {
+  UsersService,
+  isDeleted,
+  isEmailVerified,
+} from '../users/users.service';
 
 export interface RefreshInput {
   refreshToken: string;
@@ -40,10 +44,19 @@ export class RefreshService {
     // §1.3.1 steps 3–4: resolve the subject and check the account is still one
     // that may hold a session. A user deleted since the token was signed still
     // holds a perfectly valid signature, and the signature is all the token is.
-    if (!user || !isEmailVerified(user)) {
+    //
+    // This is also what ends an erased account's sessions. Nothing revokes a
+    // refresh token — none are stored — so the check here *is* the revocation:
+    // the last access token dies of old age within fifteen minutes and cannot
+    // be replaced. docs/ACCOUNT-DELETION.md §6.
+    if (!user || isDeleted(user) || !isEmailVerified(user)) {
       this.logger.warn({
         event: 'auth.refresh.rejected',
-        reason: user ? 'email_not_verified' : 'unknown_subject',
+        reason: !user
+          ? 'unknown_subject'
+          : isDeleted(user)
+            ? 'account_deleted'
+            : 'email_not_verified',
         userId: claims.sub,
       });
 

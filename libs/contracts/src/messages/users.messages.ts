@@ -14,6 +14,8 @@ export const USERS_PATTERNS = {
   UPDATE_PROFILE: 'identity.users.update-profile',
   START_EMAIL_CHANGE: 'identity.users.start-email-change',
   CONFIRM_EMAIL_CHANGE: 'identity.users.confirm-email-change',
+  DELETE_USER: 'identity.users.delete',
+  CONFIRM_DELETION: 'identity.users.confirm-deletion',
 } as const;
 
 export interface GetUserProfileRequest {
@@ -180,4 +182,58 @@ export interface ConfirmEmailChangeResponse {
   status: 'email_changed';
   userId: string;
   email: string;
+}
+
+/** And the one that lets them erase it — docs/ACCOUNT-DELETION.md §3. */
+export const PROFILE_DELETE_PERMISSION = {
+  resource: 'users',
+  action: 'delete',
+};
+
+export const DELETION_REASON_MAX_LENGTH = 500;
+
+export interface DeleteUserRequest {
+  targetUserId: string;
+  viewerUserId: string;
+  viewerRoles: string[];
+  /** Free text, kept for the audit trail only — it changes nothing. */
+  reason?: string;
+  correlationId?: string;
+}
+
+/**
+ * Two outcomes, and the status is the contract as everywhere else: an
+ * administrator's erasure is done when it answers, a user's is not, because
+ * theirs has to be confirmed against their address first.
+ */
+export type DeleteUserResponse =
+  | { status: 'deleted'; userId: string }
+  | {
+      status: 'confirmation_required';
+      challengeId: string;
+      method: ConfirmationMethod;
+      expiresAt: string;
+    };
+
+export interface ConfirmDeletionRequest {
+  targetUserId: string;
+  viewerUserId: string;
+  challengeId?: string;
+  code?: string;
+  token?: string;
+  correlationId?: string;
+}
+
+export interface ConfirmDeletionResponse {
+  status: 'deleted';
+  userId: string;
+}
+
+/**
+ * What an erased account's address becomes. `.invalid` is reserved by RFC 2606
+ * and guaranteed never to resolve, so the row keeps a unique, well-formed value
+ * that cannot be mailed and cannot collide with a real address.
+ */
+export function anonymizedEmail(userId: string): string {
+  return `deleted-${userId}@invalid`;
 }

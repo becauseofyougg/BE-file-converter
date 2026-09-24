@@ -196,6 +196,8 @@ change all lean on the same rules, and they now lean on the same module.
 4. Changing an address does not end existing sessions. It cannot: refresh tokens are not stored, so
    there is nothing to revoke ([AUTHORIZATION.md §5](AUTHORIZATION.md)). An attacker who changed the
    address keeps their session for up to 30 days, which is the strongest argument in this codebase for
-   the `tokens_valid_from` column that document sketches.
+   the `tokens_valid_from` column that document sketches. Erasing an account *does* end them, because
+   the refresh path reloads the account and refuses a deleted one
+   ([ACCOUNT-DELETION.md §6](ACCOUNT-DELETION.md)) — the same trick would work here.
 5. `displayName` is not screened for abuse — no profanity list, no homoglyph check, no uniqueness. It
    is a label, and a product decision rather than a technical one.

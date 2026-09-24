@@ -64,6 +64,15 @@ model User {
   /// and nothing uploads one yet, see docs/USER-PROFILE.md §5.
   photoKey String? @map("photo_key") @db.VarChar(512)
 
+  /// Set when the account has been erased — docs/ACCOUNT-DELETION.md.
+  ///
+  /// The row survives its own deletion, emptied of everything personal. It has
+  /// to: `conversion_jobs` lives in another database and carries `user_id` with
+  /// no foreign key to enforce anything, so dropping the row here would leave
+  /// every job and every audit line pointing at nothing. Null means a live
+  /// account, and every path that reads a user treats non-null as absent.
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

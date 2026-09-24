@@ -19,7 +19,7 @@ import { AppError } from '@core/errors/app-error';
 import { OutboxService } from '../outbox/outbox.service';
 import { RbacConfigService } from '../rbac/rbac-config.service';
 import { ProfileService } from './profile.service';
-import { UsersService } from './users.service';
+import { UsersService, isDeleted } from './users.service';
 
 /**
  * `PATCH /users/:userId` — docs/PROFILE-UPDATE.md §3.
@@ -58,7 +58,7 @@ export class ProfileUpdateService {
 
     const user = await this.users.findById(input.targetUserId);
 
-    if (!user) {
+    if (!user || isDeleted(user)) {
       this.audit(input, 'not_found', audience);
 
       throw new AppError(ERROR_CODES.USER_NOT_FOUND, 'User not found', 404);

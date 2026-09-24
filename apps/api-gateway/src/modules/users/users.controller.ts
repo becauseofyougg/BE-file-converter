@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -10,21 +11,26 @@ import {
   Patch,
   Post,
   Req,
+  Res,
   SetMetadata,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import type {
   ConfirmEmailChangeResponse,
+  DeleteUserResponse,
   StartEmailChangeResponse,
   UserProfile,
 } from '@contracts/messages/users.messages';
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
 import { CurrentUser, Public, type RequestUser } from '../auth/jwt-auth.guard';
+import { SessionCookiesService } from '../auth/session-cookies.service';
 import {
+  ConfirmDeletionDto,
   ConfirmEmailChangeDto,
+  DeleteUserDto,
   StartEmailChangeDto,
   UpdateUserDto,
 } from './dto/update-user.dto';
@@ -47,7 +53,10 @@ const ProfileReadLimit = (limit: number, ttlMs: number) =>
 @Controller('users')
 @UseGuards(ProfileReadRateLimitGuard)
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly cookies: SessionCookiesService,
+  ) {}
 
   /**
    * docs/USER-PROFILE.md.
@@ -156,6 +165,95 @@ export class UsersController {
       token: dto.token,
       correlationId: correlationId(request),
     });
+  }
+
+  /**
+   * docs/ACCOUNT-DELETION.md. `DELETE` rather than `POST …/delete`, which
+   * §1.3.1 left open: the method already means this, and an idempotent verb
+   * matches an operation whose second call is a no-op.
+   *
+   * Two outcomes. An administrator holding `users@delete` gets `204` and it is
+   * done; a user erasing their own account gets `202` and a challenge, because
+   * this is the one irreversible thing the API does and a session found on an
+   * unlocked laptop should not be enough to do it.
+   */
+  @Delete(':userId')
+  @Throttle({ default: { limit: 5, ttl: HOUR_MS } })
+  @ProfileReadLimit(10, HOUR_MS)
+  async deleteUser(
+    @Param() params: UserParamsDto,
+    @Body() dto: DeleteUserDto,
+    @CurrentUser() viewer: RequestUser,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<DeleteUserResponse | undefined> {
+    const result = await this.users.deleteUser({
+      targetUserId: params.userId,
+      viewerUserId: viewer.id,
+      viewerRoles: viewer.roles,
+      reason: dto.reason,
+      correlationId: correlationId(request),
+    });
+
+    if (result.status === 'confirmation_required') {
+      void reply.status(HttpStatus.ACCEPTED);
+
+      return result;
+    }
+
+    this.endSessionIfSelf(reply, viewer, params.userId);
+    void reply.status(HttpStatus.NO_CONTENT);
+
+    return undefined;
+  }
+
+  /**
+   * Completes a self-erasure. **Authenticated**, unlike the email-change
+   * confirmation — the contrast is deliberate. That link goes to a mailbox the
+   * user has not proved yet, often on a second device with no session; this one
+   * goes to their own address, on the device they are already signed in on, and
+   * destroys the account. Requiring both the session and the secret costs
+   * nothing here and means an intercepted mail is not enough on its own.
+   */
+  @Post(':userId/deletion/confirm')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
+  async confirmDeletion(
+    @Param() params: UserParamsDto,
+    @Body() dto: ConfirmDeletionDto,
+    @CurrentUser() viewer: RequestUser,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<void> {
+    await this.users.confirmDeletion({
+      targetUserId: params.userId,
+      viewerUserId: viewer.id,
+      challengeId: dto.challengeId,
+      code: dto.code,
+      token: dto.token,
+      correlationId: correlationId(request),
+    });
+
+    this.endSessionIfSelf(reply, viewer, params.userId);
+  }
+
+  /**
+   * Clears the cookies of somebody who has just erased their own account, so
+   * the browser stops sending credentials for a user that no longer exists.
+   *
+   * It is a courtesy, not the security boundary: the tokens stay
+   * cryptographically valid, and what actually ends the session is identity
+   * refusing to refresh a deleted account — at most one access-token lifetime
+   * later (docs/ACCOUNT-DELETION.md §6).
+   */
+  private endSessionIfSelf(
+    reply: FastifyReply,
+    viewer: RequestUser,
+    targetUserId: string,
+  ): void {
+    if (viewer.id === targetUserId) {
+      this.cookies.clear(reply);
+    }
   }
 }
 

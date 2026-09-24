@@ -118,6 +118,10 @@ therefore the only moment a change to it can take effect. A role taken away reac
 the user on their next refresh, at most one access-token lifetime later, instead of
 in thirty days. This is the answer to the open question in [RBAC.md §4](RBAC.md).
 
+An **erased account is refused here too**, and that refusal is the only thing that ends its
+sessions — nothing is stored to revoke, so this check *is* the revocation
+([ACCOUNT-DELETION.md §6](ACCOUNT-DELETION.md)).
+
 **A login lockout is not a barrier here.** It exists to stop password guessing, and
 the holder of a refresh token guessed nothing. Letting it block a refresh would hand
 anyone who knows an email address a way to knock that account's live sessions offline

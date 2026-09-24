@@ -16,6 +16,7 @@ function buildUser(overrides: Partial<User> = {}): User {
     emailVerifiedAt: new Date(),
     failedLoginAttempts: 0,
     lockedUntil: null,
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
