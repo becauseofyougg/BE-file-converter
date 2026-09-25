@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { IsUUID } from 'class-validator';
 
 /**
@@ -9,6 +10,7 @@ import { IsUUID } from 'class-validator';
  * probe it — see docs/USER-PROFILE.md §3.
  */
 export class UserParamsDto {
+  @ApiProperty({ format: 'uuid' })
   @IsUUID()
   userId: string;
 }

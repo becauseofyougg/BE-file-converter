@@ -7,6 +7,9 @@ Fastify plugins and types (`NestFastifyApplication`, `app.register(...)`).
 The design and the reasoning behind the split live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
 cross-cutting requirements in [docs/NON-FUNCTIONAL-REQUIREMENTS.md](docs/NON-FUNCTIONAL-REQUIREMENTS.md).
 
+The gateway publishes an OpenAPI document at **`/docs`** (raw JSON at `/docs/json`), generated from the
+same DTOs that validate requests, so the two cannot drift apart. It is served outside production only.
+
 ## Services
 
 | Service | Port | Responsibility | Owns |

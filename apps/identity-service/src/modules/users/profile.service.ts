@@ -16,7 +16,7 @@ import {
   UsersService,
   isDeleted,
   isEmailVerified,
-  type User,
+  type SafeUser,
 } from './users.service';
 
 /**
@@ -91,7 +91,7 @@ export class ProfileService {
    * default-deny of §1.4 hold by construction rather than by remembering.
    */
   async projectFor(
-    user: User,
+    user: SafeUser,
     audience: ProfileAudience,
   ): Promise<UserProfileRecord> {
     const record: UserProfileRecord = { id: user.id };

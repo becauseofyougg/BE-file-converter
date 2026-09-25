@@ -17,7 +17,7 @@ import {
 import { AppError } from '@core/errors/app-error';
 import { RbacConfigService } from '../rbac/rbac-config.service';
 import { encodeCursor, decodeCursor } from './user-list.cursor';
-import { UsersService, type User } from './users.service';
+import { UsersService, type ListUser } from './users.service';
 
 /**
  * The administrative user list — docs/USER-LIST.md.
@@ -109,7 +109,7 @@ export class UserListService {
  * here by accident, which is what §1.4's "no sensitive fields" needs in order
  * to hold without anyone remembering it.
  */
-function toListItem(user: User): UserListItemRecord {
+function toListItem(user: ListUser): UserListItemRecord {
   return {
     id: user.id,
     email: user.email,
@@ -122,7 +122,7 @@ function toListItem(user: User): UserListItemRecord {
 }
 
 /** The four states of docs/USER-LIST.md §4, in the order they take precedence. */
-export function statusOf(user: User): UserStatus {
+export function statusOf(user: ListUser): UserStatus {
   if (user.deletedAt !== null) {
     return USER_STATUSES.DELETED;
   }
