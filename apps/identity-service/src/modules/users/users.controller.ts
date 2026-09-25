@@ -11,7 +11,9 @@ import {
   type ConfirmDeletionResponse,
   type ConfirmEmailChangeResponse,
   type DeleteUserResponse,
+  type ListUsersResponse,
   type StartEmailChangeResponse,
+  type UserListItemRecord,
   type UserProfileRecord,
 } from '@contracts/messages/users.messages';
 import { RpcAppExceptionFilter } from '@core/errors/rpc-app-exception.filter';
@@ -22,6 +24,8 @@ import {
   DeleteUserMessageDto,
 } from './dto/delete-user.dto';
 import { GetUserProfileMessageDto } from './dto/get-profile.dto';
+import { ListUsersMessageDto } from './dto/list-users.dto';
+import { UserListService } from './user-list.service';
 import {
   ConfirmEmailChangeMessageDto,
   StartEmailChangeMessageDto,
@@ -47,7 +51,29 @@ export class UsersController {
     private readonly updates: ProfileUpdateService,
     private readonly emailChange: EmailChangeService,
     private readonly deletion: AccountDeletionService,
+    private readonly list: UserListService,
   ) {}
+
+  /** Read-only, so no transaction and no outbox — docs/USER-LIST.md. */
+  @MessagePattern(USERS_PATTERNS.LIST_USERS)
+  async listUsers(
+    @Payload(messageValidationPipe) dto: ListUsersMessageDto,
+    @Ctx() context: RmqContext,
+  ): Promise<ListUsersResponse<UserListItemRecord>> {
+    return settleRpc(context, () =>
+      this.list.listUsers({
+        viewerUserId: dto.viewerUserId,
+        viewerRoles: dto.viewerRoles,
+        cursor: dto.cursor,
+        limit: dto.limit,
+        q: dto.q,
+        status: dto.status,
+        sort: dto.sort,
+        order: dto.order,
+        correlationId: dto.correlationId,
+      }),
+    );
+  }
 
   /**
    * Read-only, so no transaction and no outbox — and a refusal is still a

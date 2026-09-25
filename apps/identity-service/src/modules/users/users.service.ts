@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { TransactionHost } from '@nestjs-cls/transactional';
 import { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
-import type { User } from '@prisma-clients/identity';
+import type { Prisma, User } from '@prisma-clients/identity';
 
 import { anonymizedEmail } from '@contracts/messages/users.messages';
 import { PrismaService } from '../../database/prisma.service';
@@ -68,6 +68,45 @@ export class UsersService {
         email: normalizeEmail(input.email),
         passwordHash: input.passwordHash,
         emailVerifiedAt: input.emailVerified ? new Date() : null,
+      },
+    });
+  }
+
+  /**
+   * One page of the admin list — docs/USER-LIST.md §5.
+   *
+   * Cursor pagination rather than offset: `skip` makes the database count past
+   * every row it is skipping, so page 500 costs five hundred pages of work, and
+   * a row inserted or deleted meanwhile shifts every later page by one. A
+   * cursor resumes from a position instead, which is both cheap and stable.
+   *
+   * `skip: 1` steps past the cursor row itself, which the caller already has.
+   */
+  findManyForList(input: {
+    where: Prisma.UserWhereInput;
+    orderBy: Prisma.UserOrderByWithRelationInput[];
+    take: number;
+    cursorId?: string;
+  }): Promise<User[]> {
+    return this.db.user.findMany({
+      where: input.where,
+      orderBy: input.orderBy,
+      take: input.take,
+      ...(input.cursorId ? { cursor: { id: input.cursorId }, skip: 1 } : {}),
+    });
+  }
+
+  /**
+   * A session was issued. Folded into the same statement that clears the
+   * failure count, so a successful login is one write rather than two.
+   */
+  async recordSuccessfulLogin(userId: string): Promise<void> {
+    await this.db.user.update({
+      where: { id: userId },
+      data: {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        lastLoginAt: new Date(),
       },
     });
   }

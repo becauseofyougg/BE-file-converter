@@ -16,6 +16,7 @@ export const USERS_PATTERNS = {
   CONFIRM_EMAIL_CHANGE: 'identity.users.confirm-email-change',
   DELETE_USER: 'identity.users.delete',
   CONFIRM_DELETION: 'identity.users.confirm-deletion',
+  LIST_USERS: 'identity.users.list',
 } as const;
 
 export interface GetUserProfileRequest {
@@ -236,4 +237,92 @@ export interface ConfirmDeletionResponse {
  */
 export function anonymizedEmail(userId: string): string {
   return `deleted-${userId}@invalid`;
+}
+
+/* ------------------------------------------------------------------ *
+ * The administrative user list — docs/USER-LIST.md
+ * ------------------------------------------------------------------ */
+
+/** The right to enumerate accounts, deliberately not the same as reading one. */
+export const USER_LIST_PERMISSION = { resource: 'users', action: 'list' };
+
+/**
+ * The states an account is actually in.
+ *
+ * The requirement asks for `active | blocked | deleted`, but nothing here is
+ * ever "blocked": there is no administrative suspension, and the three things
+ * that do stop an account being usable are an erasure, a brute-force lockout
+ * and an address that was never confirmed. Naming them for what they are makes
+ * each filter answer a question an administrator actually has.
+ */
+export const USER_STATUSES = {
+  ACTIVE: 'active',
+  /** Locked out by consecutive failed passwords — docs/AUTHENTICATION.md §5. */
+  LOCKED: 'locked',
+  /** Registered but never confirmed the address. */
+  UNVERIFIED: 'unverified',
+  /** Erased — the row is a tombstone, see docs/ACCOUNT-DELETION.md. */
+  DELETED: 'deleted',
+} as const;
+
+export type UserStatus = (typeof USER_STATUSES)[keyof typeof USER_STATUSES];
+
+export const USER_LIST_SORTS = {
+  CREATED_AT: 'created_at',
+  LAST_LOGIN: 'last_login',
+  EMAIL: 'email',
+} as const;
+
+export type UserListSort =
+  (typeof USER_LIST_SORTS)[keyof typeof USER_LIST_SORTS];
+
+export type SortOrder = 'asc' | 'desc';
+
+export const USER_LIST_LIMITS = {
+  MIN: 1,
+  MAX: 100,
+  DEFAULT: 20,
+} as const;
+
+/** The longest search string accepted, so a pathological pattern cannot be sent. */
+export const USER_SEARCH_MAX_LENGTH = 128;
+
+export interface ListUsersRequest {
+  viewerUserId: string;
+  viewerRoles: string[];
+  cursor?: string | null;
+  limit?: number;
+  q?: string;
+  status?: UserStatus;
+  sort?: UserListSort;
+  order?: SortOrder;
+  correlationId?: string;
+}
+
+/** identity → gateway. `photoKey` is a storage key; the gateway presigns it. */
+export interface UserListItemRecord {
+  id: string;
+  email: string;
+  displayName: string | null;
+  photoKey: string | null;
+  status: UserStatus;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+/** gateway → client. */
+export interface UserListItem {
+  id: string;
+  email: string;
+  displayName: string | null;
+  photo: string | null;
+  status: UserStatus;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export interface ListUsersResponse<TItem = UserListItem | UserListItemRecord> {
+  items: TItem[];
+  /** Null on the last page. Opaque: clients pass it back, never build one. */
+  nextCursor: string | null;
 }

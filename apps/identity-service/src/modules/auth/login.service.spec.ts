@@ -70,6 +70,7 @@ describe('LoginService', () => {
       recordLoginFailure: jest.fn().mockResolvedValue(undefined),
       lockLogin: jest.fn().mockResolvedValue(undefined),
       resetLoginFailures: jest.fn().mockResolvedValue(undefined),
+      recordSuccessfulLogin: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<UsersService>;
 
     passwords = {
@@ -145,10 +146,15 @@ describe('LoginService', () => {
       );
     });
 
-    it('clears the failure count on success', async () => {
+    /**
+     * One write, not two: the statement that records the login is the same one
+     * that clears the brute-force counter.
+     */
+    it('records the login and clears the failure count together', async () => {
       await login();
 
-      expect(users.resetLoginFailures).toHaveBeenCalledWith('user-1');
+      expect(users.recordSuccessfulLogin).toHaveBeenCalledWith('user-1');
+      expect(users.resetLoginFailures).not.toHaveBeenCalled();
     });
 
     it('issues no challenge and sends no mail', async () => {

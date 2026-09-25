@@ -162,6 +162,9 @@ address means proving you can read mail sent to it
 ([docs/PROFILE-UPDATE.md](docs/PROFILE-UPDATE.md)). `DELETE` erases an account by emptying its row
 rather than dropping it, so references from other services still resolve, and a user erasing their own
 has to prove their address first ([docs/ACCOUNT-DELETION.md](docs/ACCOUNT-DELETION.md)).
+`GET /admin/users` lists accounts under `users@list` — a separate action from `users@read`, because
+enumerating everyone is a larger power than looking up the account named in a ticket
+([docs/USER-LIST.md](docs/USER-LIST.md)).
 
 ## Messaging
 
