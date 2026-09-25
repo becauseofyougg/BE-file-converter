@@ -16,6 +16,7 @@ import { HttpAppExceptionFilter } from '@core/errors/http-exception.filter';
 import { EXCHANGES, QUEUES } from '@contracts/messaging/topology';
 import { AppModule } from './app.module';
 import { GatewayConfig } from './config/gateway.config';
+import { setupOpenApi } from './openapi';
 
 /**
  * The only public HTTP surface. It owns no domain data: everything it serves
@@ -63,6 +64,13 @@ async function bootstrap() {
   await app.register(fastifyCookie, {
     secret: configService.get('COOKIE_SECRET'),
   });
+
+  // Generated from the DTOs, so it cannot drift from the code. Served outside
+  // production: an OpenAPI document is a map of the attack surface, and the
+  // people who need it in production can read it from the repository.
+  if (configService.get('NODE_ENV') !== 'production') {
+    setupOpenApi(app);
+  }
 
   // The gateway is an HTTP surface that also *listens*: it subscribes to
   // `domain.events` so an RBAC change reaches its cache without a restart.

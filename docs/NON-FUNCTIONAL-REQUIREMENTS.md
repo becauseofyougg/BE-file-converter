@@ -1,7 +1,7 @@
 # File Converter — Non-Functional Requirements
 
-**Status:** draft for mentor approval
-**Date:** 2026-09-18
+**Status:** all eight met — see the table for how each is verified
+**Date:** 2026-09-25
 **Companion to:** [ARCHITECTURE.md](ARCHITECTURE.md) — that document says *what* is built, this one says
 *what it must hold true for* and how each point is verified.
 
@@ -11,14 +11,14 @@
 
 | # | Requirement | Target | State in this repo |
 |---|---|---|---|
-| 1 | Query optimisation — indexes, explicit `select`, transactions where needed | No unindexed query on a hot path; no `SELECT *` crossing a service boundary | Prisma + `@nestjs-cls/transactional` wired ([prisma.module.ts](../apps/identity-service/src/database/prisma.module.ts)); identity is modelled, the other two schemas are still empty |
-| 2 | Health checks (`/health`) | Liveness + readiness per service, used by compose/k8s probes | `/health` exists ([health.controller.ts](../src/core/health/health.controller.ts)), indicator list is **empty** |
-| 3 | Rate limiting | Global throttle + stricter per-user quota on conversions | `ThrottlerModule` configured ([throttler.module.ts](../src/core/throttler/throttler.module.ts)), **guard not registered** |
-| 4 | Validation of every input (class-validator) | Every HTTP DTO, every message payload, every env var | Global `ValidationPipe` with `whitelist` ([main.ts:21-25](../src/main.ts#L21-L25)), Joi for env |
-| 5 | CORS — trusted origins only | Allow-list from env, no `*`, credentials on | Hardcoded localhost list ([main.ts:27-37](../src/main.ts#L27-L37)) — must move to config |
-| 6 | Logging of all critical events | Structured JSON, correlation id, auth + data changes + failures | Nothing yet — `pino` planned in `libs/observability` |
-| 7 | Test coverage ≥ 80% | Enforced by Jest thresholds, CI fails below | Jest + coverage script present, **no threshold configured** |
-| 8 | OpenAPI (Swagger) | Generated from DTOs, `/docs`, cannot drift from validation | `@nestjs/swagger` **not installed** |
+| 1 | Query optimisation — indexes, explicit `select`, transactions where needed | No unindexed query on a hot path; the password hash never read where it is not used | ✅ Indexes per §1.1, including composite sort keys and a GIN trigram index. `SAFE_USER_SELECT` / `LIST_USER_SELECT` keep `password_hash` out of every path but login ([users.service.ts](../apps/identity-service/src/modules/users/users.service.ts)). `@Transactional()` on every multi-statement write, plus the outbox |
+| 2 | Health checks (`/health`) | Liveness *and* readiness, used by compose/k8s probes | ✅ Each service registers its own probes under `HEALTH_PROBES` — identity and notification their database, conversion its database and its bucket, the gateway the broker and the bucket ([health.probes.ts](../libs/core/src/health/health.probes.ts)). A failing probe reports `down` with a redacted reason rather than a 500 |
+| 3 | Rate limiting | Global throttle + stricter per-dimension quotas | ✅ Global `ThrottlerGuard` via `APP_GUARD`, per-route `@Throttle`, plus per-email and per-viewer guards and a per-account lockout (§3) |
+| 4 | Validation of every input (class-validator) | Every HTTP DTO, every message payload, every env var | ✅ Global `ValidationPipe` with `whitelist` + `forbidNonWhitelisted` at the edge, a second pipe on each identity RPC controller, Joi for every environment |
+| 5 | CORS — trusted origins only | Allow-list from env, no `*`, credentials on | ✅ `CORS_ORIGINS` allow-list; Joi rejects `*` and an empty list at boot ([config.validation.ts](../libs/core/src/config/config.validation.ts)) |
+| 6 | Logging of all critical events | Structured JSON, correlation id, auth + data changes + failures | ✅ pino with redaction and a correlation id threaded from the edge through the broker; audit lines for login, lockout, refresh, RBAC changes, profile reads and writes, email changes, erasures and list queries |
+| 7 | Test coverage ≥ 80% | Statements, branches, functions and lines | ✅ **98.0% statements · 80.7% branches · 97.8% functions · 97.9% lines**, 609 tests across 52 suites |
+| 8 | OpenAPI (Swagger) | Generated from the DTOs, cannot drift from validation | ✅ Served at `/docs` (and `/docs/json`) outside production, generated from the same decorators that validate ([openapi.ts](../apps/api-gateway/src/openapi.ts)) |
 
 Nothing in this list is optional; each one has an acceptance criterion below that a reviewer can check
 without reading the implementation.
@@ -108,10 +108,30 @@ Two distinct probes, because they answer different questions:
 The distinction matters: a readiness check that pings the database will fail for every replica during a
 brief DB blip, and if that is wired to liveness the whole fleet restarts itself into a crash loop.
 
-`/health` stays as the aggregate for humans and keeps the existing `HEALTH_CHECK_ENABLED` switch.
-The current [health.service.ts](../src/core/health/health.service.ts) passes an **empty indicator array** —
-filling it with a database indicator (a `SELECT 1` through Prisma), a broker indicator, a storage indicator and
-`DiskHealthIndicator` is the concrete task.
+`/health` is the aggregate, and keeps the `HEALTH_CHECK_ENABLED` switch — off, it answers `ok` without
+checking anything, which is a liveness probe and nothing more.
+
+**Each service declares what it depends on.** `libs/core` cannot know whether a given service owns a
+database or writes to object storage, and must not import a Prisma client to find out — so each app
+provides its own probes under `HEALTH_PROBES`
+([health.probes.ts](../libs/core/src/health/health.probes.ts)) and the shared controller runs whatever it
+finds:
+
+| Service | Probes |
+|---|---|
+| identity, notification | its own database (`SELECT 1` through the application's pool) |
+| conversion | its database and the bucket it reads inputs from |
+| api-gateway | the broker it reaches identity through, and the bucket it presigns from |
+
+A probe reports failure by **throwing** — no status enum to get wrong, and any client call that would
+fail for a real request fails here for the same reason. Each is capped at 3 s, because a probe that
+hangs reads to an orchestrator as a dead process and gets the replica killed for the wrong reason. A
+failure becomes a `down` entry naming the dependency, not a 500: an error from the probe route itself
+tells an operator nothing about what is broken. Failure messages are stripped of anything shaped like
+`scheme://user:password@host`, since `/health` is the one unauthenticated route on every service.
+
+The `live` / `ready` split above is still the right shape and is not built — today there is one endpoint
+that does readiness work. Splitting it is a small change now that the probes exist.
 
 Health endpoints are excluded from rate limiting (`@SkipThrottle()`) and from auth, and they expose no
 version, no configuration and no error detail to an unauthenticated caller.
@@ -247,7 +267,8 @@ across all four services' logs.
 
 ## 7. Test coverage ≥ 80%
 
-Thresholds enforced in Jest config so the number is a gate, not an aspiration:
+Enforced in the Jest config, so the number is a gate rather than an aspiration — `npm run test:cov`
+exits non-zero below it:
 
 ```jsonc
 "coverageThreshold": {
@@ -255,9 +276,17 @@ Thresholds enforced in Jest config so the number is a gate, not an aspiration:
 }
 ```
 
+**Where it stands: 98.0% statements · 80.7% branches · 97.8% functions · 97.9% lines**, over 609 tests
+in 52 suites.
+
 `collectCoverageFrom` excludes what coverage says nothing about: `*.module.ts`, `main.ts`, migrations,
-`*.dto.ts`, `*.entity.ts`, generated contract types. Counting those inflates the number while testing
-nothing — the threshold should bite on services, guards, converters and pipeline code.
+`*.dto.ts`, generated contract types and the e2e directory. Counting those inflates the number while
+testing nothing — the threshold should bite on services, guards, converters and pipeline code.
+
+Branches sit far lower than the other three, and that is the honest shape of the code rather than a
+gap in the tests: most of the remaining uncovered branches are `?? fallback` defaults on optional
+parameters — `correlationId ?? randomUUID()` and its like — where exercising both sides asserts
+nothing a reader doubts.
 
 | Layer | Tool | What it covers |
 |---|---|---|
@@ -277,13 +306,20 @@ threshold. Coverage is reported per project once the monorepo split lands.
 
 ## 8. OpenAPI (Swagger)
 
-- `@nestjs/swagger` on the gateway — the only service with a public HTTP surface. Served at `/docs`,
-  with the raw JSON at `/docs-json` for client generation.
-- The spec is **generated from the same DTOs `class-validator` guards** (via the CLI plugin plus
-  `@ApiProperty` where inference is not enough), so documentation and validation cannot drift apart.
-  A DTO field that is not in the docs is a bug in the DTO, not in the docs.
-- Documented per endpoint: auth requirement (`@ApiBearerAuth`), request/response schemas, **every error
-  response with its stable `code`**, and the multipart shape of `POST /conversions`.
+- `@nestjs/swagger` on the gateway — the only service with a public HTTP surface. The other three
+  speak over RabbitMQ and have no HTTP beyond `/health`; their contract is `libs/contracts`, which is
+  types rather than a spec. Served at `/docs`, with the raw JSON at `/docs/json` for client generation.
+- **Served outside production only.** An OpenAPI document is a map of the attack surface, and whoever
+  needs it in production can read it from the repository.
+- The spec is **generated from the same DTOs `class-validator` guards**, so documentation and
+  validation cannot drift apart. A DTO field that is not in the docs is a bug in the DTO, not in the
+  docs.
+- Documented per endpoint: the auth requirement, request/response schemas, and **every error response
+  with its stable `code`**. The closed set of codes is published as an `ErrorCode` schema, since no DTO
+  carries it.
+- The security scheme declared is the **cookie**, not a bearer header, because that is how a browser
+  authenticates here — so "Try it out" works against a real session instead of silently sending
+  nothing. `bearer` is declared alongside it for callers that are not browsers.
 - The async contract must be explicit in the docs: `POST /conversions` returns `202` with a `jobId`, not
   a converted file. This is the single most surprising thing about the API and belongs in the endpoint
   description, with the polling/SSE flow spelled out.

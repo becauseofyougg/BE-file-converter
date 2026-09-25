@@ -3,10 +3,12 @@ import { ScheduleModule } from '@nestjs/schedule';
 
 import { ConfigModule } from '@core/config/config.module';
 import { HealthModule } from '@core/health/health.module';
+import { HEALTH_PROBES, databaseProbe } from '@core/health/health.probes';
 import { ObservabilityModule } from '@obs/logger.module';
 
 import { identityConfigSchema } from './config/identity.config';
 import { PrismaModule } from './database/prisma.module';
+import { PrismaService } from './database/prisma.service';
 import { MessagingModule } from './messaging/messaging.module';
 
 /**
@@ -40,6 +42,16 @@ import { UsersModule } from './modules/users/users.module';
     TokensModule,
     OutboxModule,
     RbacModule,
+  ],
+  providers: [
+    {
+      // Identity answers over the broker, so an unreachable broker means
+      // nothing reaches this service at all and the probe would never be
+      // asked. What it can usefully report is its own database.
+      provide: HEALTH_PROBES,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => [databaseProbe(prisma)],
+    },
   ],
 })
 export class AppModule {}

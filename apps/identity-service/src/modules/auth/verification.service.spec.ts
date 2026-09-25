@@ -1,6 +1,7 @@
 import { TransactionHost } from '@nestjs-cls/transactional';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
+import { VERIFICATION_TOKEN_TYPES } from '@contracts/messages/identity.messages';
 import { AppError } from '@core/errors/app-error';
 import { AuthSettingsService } from './auth-settings.service';
 import {
@@ -254,6 +255,68 @@ describe('VerificationService', () => {
       await expect(service.rotate(token)).rejects.toThrow(
         expect.objectContaining({ code: ERROR_CODES.RESEND_TOO_SOON }),
       );
+    });
+  });
+
+  describe('the lookups', () => {
+    it('finds a live challenge by its handle, never a spent one', async () => {
+      await service.findLiveByChallengeId('challenge-1');
+
+      expect(db.findFirst).toHaveBeenCalledWith({
+        where: { challengeId: 'challenge-1', usedAt: null },
+      });
+    });
+
+    it('finds the newest live challenge of a type for a user', async () => {
+      await service.findLiveByUser('user-1');
+
+      expect(db.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          type: VERIFICATION_TOKEN_TYPES.EMAIL_VERIFICATION,
+          usedAt: null,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+
+    it('looks a specific type up when asked', async () => {
+      await service.findLiveByUser(
+        'user-1',
+        VERIFICATION_TOKEN_TYPES.EMAIL_CHANGE,
+      );
+
+      expect(
+        (db.findFirst.mock.calls[0][0] as { where: { type: string } }).where
+          .type,
+      ).toBe(VERIFICATION_TOKEN_TYPES.EMAIL_CHANGE);
+    });
+
+    /**
+     * A magic link arrives as the secret alone, with no handle — so the hash
+     * is the lookup key, and the raw token never goes near the database.
+     */
+    it('finds a link token by the hash of it, not the token itself', async () => {
+      await service.findLiveByRawToken('a-link-token');
+
+      expect(db.findFirst).toHaveBeenCalledWith({
+        where: { tokenHash: hashSecret('a-link-token'), usedAt: null },
+      });
+      expect(JSON.stringify(db.findFirst.mock.calls[0][0])).not.toContain(
+        'a-link-token',
+      );
+    });
+  });
+
+  describe('deleteExpiredBefore', () => {
+    it('removes everything already past its expiry', async () => {
+      const cutoff = new Date('2026-01-01T00:00:00.000Z');
+      db.deleteMany.mockResolvedValue({ count: 7 });
+
+      await expect(service.deleteExpiredBefore(cutoff)).resolves.toBe(7);
+      expect(db.deleteMany).toHaveBeenCalledWith({
+        where: { expiresAt: { lt: cutoff } },
+      });
     });
   });
 });

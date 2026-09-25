@@ -19,7 +19,7 @@ import { AppError } from '@core/errors/app-error';
 import { VerificationService } from '../auth/verification.service';
 import { OutboxService } from '../outbox/outbox.service';
 import { RbacConfigService } from '../rbac/rbac-config.service';
-import { UsersService, isDeleted, type User } from './users.service';
+import { UsersService, isDeleted, type SafeUser } from './users.service';
 
 /**
  * Erasing an account — docs/ACCOUNT-DELETION.md.
@@ -128,7 +128,7 @@ export class AccountDeletionService {
    * data intact, or its data gone and its sessions live.
    */
   private async erase(
-    user: User,
+    user: SafeUser,
     actorUserId: string | undefined,
     correlationId: string | undefined,
   ): Promise<void> {
@@ -158,7 +158,7 @@ export class AccountDeletionService {
   }
 
   private async requireConfirmation(
-    user: User,
+    user: SafeUser,
     input: DeleteUserRequest,
   ): Promise<DeleteUserResponse> {
     const challenge = await this.verification.issue(
@@ -210,7 +210,7 @@ export class AccountDeletionService {
    * repeated call safe (§1.6): the second one changes nothing and answers the
    * same `404` every other route gives for a user that does not exist.
    */
-  private async loadLiveUser(userId: string): Promise<User> {
+  private async loadLiveUser(userId: string): Promise<SafeUser> {
     const user = await this.users.findById(userId);
 
     if (!user || isDeleted(user)) {
