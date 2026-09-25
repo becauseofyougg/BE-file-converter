@@ -239,7 +239,8 @@ job; the API is designed so that change is additive (`POST /conversions/presign`
 holds *many* roles, so the single `role` column is gone ([RBAC.md](RBAC.md) §2) ·
 `users` (id, email `UNIQUE CITEXT`, password_hash, email_verified_at,
 created_at, updated_at, failed_login_attempts, locked_until, photo_key, display_name,
-deleted_at — an erased account keeps its row, emptied, see [ACCOUNT-DELETION.md](ACCOUNT-DELETION.md)) ·
+deleted_at — an erased account keeps its row, emptied, see [ACCOUNT-DELETION.md](ACCOUNT-DELETION.md),
+last_login_at) ·
 `verification_tokens` (id, user_id, type, token_hash, expires_at, used_at, new_email).
 
 There is deliberately **no** `refresh_tokens` table: refresh state may not be stored on the server
@@ -272,6 +273,7 @@ Token tables store **hashes**, never the raw token.
 | `PATCH` | `/users/:userId` | self, or `users@update`; self may not set `email` here |
 | `POST` | `/users/:userId/email-change` · `.../confirm` | self-service address change, proved by code or link |
 | `DELETE` | `/users/:userId` · `POST .../deletion/confirm` | erasure by anonymisation; self must prove their address |
+| `GET` | `/admin/users` | cursor-paginated directory, `users@list` only |
 | `GET` | `/formats` | conversion matrix, derived from the registry |
 | `POST` | `/conversions` | multipart: file + `targetFormat` + options → **`202` `{ jobId }`** |
 | `GET` | `/conversions` | own jobs, paginated, filter by status |

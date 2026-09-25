@@ -7,6 +7,10 @@ import {
   type ConfirmDeletionResponse,
   type DeleteUserRequest,
   type DeleteUserResponse,
+  type ListUsersRequest,
+  type ListUsersResponse,
+  type UserListItem,
+  type UserListItemRecord,
   type ConfirmEmailChangeRequest,
   type ConfirmEmailChangeResponse,
   type GetUserProfileRequest,
@@ -46,6 +50,30 @@ export class UsersService {
     );
 
     return this.toPublicProfile(record);
+  }
+
+  /**
+   * One page of the admin list. Each item's photo key becomes a presigned URL,
+   * the same swap the single-profile read makes — and the same reason the two
+   * field names differ.
+   */
+  async listUsers(
+    input: ListUsersRequest,
+  ): Promise<ListUsersResponse<UserListItem>> {
+    const page = await sendRpc<
+      ListUsersResponse<UserListItemRecord>,
+      Record<string, unknown>
+    >(this.identity, USERS_PATTERNS.LIST_USERS, { ...input });
+
+    return {
+      items: await Promise.all(
+        page.items.map(async ({ photoKey, ...rest }) => ({
+          ...rest,
+          photo: await this.presignPhoto(photoKey),
+        })),
+      ),
+      nextCursor: page.nextCursor,
+    };
   }
 
   async updateProfile(input: UpdateUserProfileRequest): Promise<UserProfile> {

@@ -31,7 +31,7 @@ Three tables, matching §1.3.2–1.3.4 of the requirement:
 | Entity | Meaning |
 |---|---|
 | `roles` | a named role. `is_system` marks the two the application cannot run without |
-| `permissions` | a protected resource and the closed set of actions it defines — `users` → `read, update, delete` |
+| `permissions` | a protected resource and the closed set of actions it defines — `users` → `read, update, delete, list` |
 | `grants` | role → permission, optionally narrowed to some of its actions |
 | `user_roles` | which roles a user holds — many-to-many, because §1.1 says "one or more" |
 
@@ -173,7 +173,7 @@ The config is data, but it cannot start empty: the evaluator fails closed, so an
 everyone out of everything *including the admin endpoints that would fix it*. The migration seeds:
 
 - roles `USER` and `ADMIN`, both `is_system`
-- permissions `users` (read, update, delete), `conversions` (create, read, delete), `rbac` (read, manage)
+- permissions `users` (read, update, delete, list — `list` added by `20260925090000_user_list`), `conversions` (create, read, delete), `rbac` (read, manage)
 - `USER` → `users@read,update` and all of `conversions`; `ADMIN` → everything
 
 Every registration is assigned `USER` **in the same transaction as the account**, since a user with no
@@ -212,7 +212,8 @@ opt-out, so a new controller is protected by the fact that nobody did anything. 
 `/health` are the public ones. A route additionally declares `@Permissions('resource@action')` when it
 needs one; authentication alone is the bar otherwise. `GET /users/:userId` declares none deliberately
 — its rule depends on who the target turns out to be, which a decorator cannot express
-([USER-PROFILE.md §3](USER-PROFILE.md)).
+([USER-PROFILE.md §3](USER-PROFILE.md)). `GET /admin/users` is the opposite case and *does* declare
+one, because listing has no self case at all ([USER-LIST.md §3](USER-LIST.md)).
 
 ---
 

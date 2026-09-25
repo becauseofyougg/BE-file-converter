@@ -120,15 +120,21 @@ export class LoginService {
       );
     }
 
-    await this.users.resetLoginFailures(user.id);
-
     if (!this.settings.confirmLogin()) {
+      // The counter is cleared as part of issuing the session, in the same
+      // statement that records the login — one write rather than two.
       return {
         status: 'authenticated',
         userId: user.id,
         tokens: await this.issueSession(user),
       };
     }
+
+    // The password was right, so the brute-force counter has done its job even
+    // though the login is not finished. Clearing it here rather than at
+    // confirmation means a user who never finishes is not left part-way to a
+    // lockout by a correct password.
+    await this.users.resetLoginFailures(user.id);
 
     return this.requireConfirmation(user, input);
   }
@@ -273,6 +279,12 @@ export class LoginService {
   }
 
   private async issueSession(user: User) {
+    // Recorded here rather than after the password check, because a login
+    // waiting on an emailed confirmation has not happened yet. This is the one
+    // place a session actually comes into existence, and the same statement
+    // clears the brute-force counter.
+    await this.users.recordSuccessfulLogin(user.id);
+
     const roles = await this.userRoles.namesFor(user.id);
 
     this.logger.log({

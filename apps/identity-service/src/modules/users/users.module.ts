@@ -7,6 +7,7 @@ import { AccountDeletionService } from './account-deletion.service';
 import { EmailChangeService } from './email-change.service';
 import { ProfileUpdateService } from './profile-update.service';
 import { ProfileService } from './profile.service';
+import { UserListService } from './user-list.service';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
@@ -22,6 +23,7 @@ import { UsersService } from './users.service';
     ProfileUpdateService,
     EmailChangeService,
     AccountDeletionService,
+    UserListService,
   ],
   exports: [UsersService, ProfileService],
 })

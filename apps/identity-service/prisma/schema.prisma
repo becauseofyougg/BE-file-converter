@@ -73,12 +73,23 @@ model User {
   /// account, and every path that reads a user treats non-null as absent.
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
+  /// Set when a session is actually issued, not merely when the password is
+  /// accepted — a login waiting on a confirmation has not happened yet.
+  /// Null until the first one. Sortable in the admin list, which is what makes
+  /// "who has not been here for a year" answerable.
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(6)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   verificationTokens VerificationToken[]
   roles              UserRoleAssignment[]
 
+  /// The admin list sorts by these and pages with `id` as the tie-break, so the
+  /// index has to carry the tie-break too — otherwise the sort is stable and
+  /// the *scan* is not, and a cursor can skip or repeat a row.
+  @@index([createdAt, id], map: "idx_users_created_at_id")
+  @@index([lastLoginAt, id], map: "idx_users_last_login_id")
   @@map("users")
 }
 
