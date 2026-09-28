@@ -1,10 +1,5 @@
 // The `notification` database. One schema per service — nobody else reads these
 // tables, which is what keeps the services independently deployable.
-//
-// No models yet: this service's persistence is still to be built. The schema
-// exists so the client, the migration directory and the scripts are already
-// wired, and the first model is a one-line change rather than a setup task.
-// The tables it will hold are sketched in docs/ARCHITECTURE.md §7.
 
 generator client {
   provider = "prisma-client-js"
@@ -19,4 +14,53 @@ datasource db {
   // `DATABASE_URL` to the client constructor. Separate names because three
   // schemas share one root `.env` during development.
   url      = env("NOTIFICATION_DATABASE_URL")
+}
+
+enum NotificationChannel {
+  EMAIL
+}
+
+enum NotificationStatus {
+  /// Recorded, not yet attempted.
+  PENDING
+  /// A send failed in a way worth retrying; the message is on the retry ladder.
+  RETRYING
+  SENT
+  /// Refused for good — a permanent SMTP error, or the ladder ran out.
+  FAILED
+  /// The code or link it carried had expired before it could be delivered.
+  EXPIRED
+}
+
+/// One row per event per channel — the send log, and the idempotency key that
+/// stops a redelivered event from mailing someone twice.
+///
+/// Deliberately holds **no address and no content**. The recipient and the
+/// code travel in the event and are rendered straight into the mail; storing
+/// them here would put a second copy of every one-time code in a database, and
+/// an address this service would then have to erase on `user.deleted`. What is
+/// left — who, what kind, when, whether it worked — is enough to answer "did the
+/// mail go out", which is the question this table exists for.
+model Notification {
+  id            String              @id @default(uuid()) @db.Uuid
+  /// The event this notification answers — its `eventId`. A redelivery carries
+  /// the same one; a resend is a new event with a new code, and a new row.
+  refId         String              @map("ref_id") @db.Uuid
+  userId        String              @map("user_id") @db.Uuid
+  /// The event name, e.g. `user.registered`.
+  type          String              @db.VarChar(64)
+  channel       NotificationChannel
+  status        NotificationStatus  @default(PENDING)
+  attempts      Int                 @default(0)
+  /// The last failure, as an SMTP code and reply — never the message itself.
+  lastError     String?             @map("last_error") @db.VarChar(512)
+  correlationId String              @map("correlation_id") @db.VarChar(128)
+  sentAt        DateTime?           @map("sent_at") @db.Timestamptz(6)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([refId, channel], map: "uq_notifications_ref_channel")
+  /// "What have we sent this user" — support questions, and the in-app list.
+  @@index([userId, createdAt], map: "ix_notifications_user_created")
+  @@map("notifications")
 }

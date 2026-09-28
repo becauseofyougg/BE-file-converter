@@ -14,8 +14,7 @@ import { PrismaService } from './database/prisma.service';
  * Application modules
  *
  */
-import { MailerModule } from './modules/mailer/mailer.module';
-import { TemplatesModule } from './modules/templates/templates.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -29,8 +28,9 @@ import { TemplatesModule } from './modules/templates/templates.module';
      * Application modules
      *
      */
-    MailerModule,
-    TemplatesModule,
+    // Consumes the events that end in an inbox; brings the mailer and the
+    // templates with it.
+    NotificationsModule,
   ],
   providers: [
     {

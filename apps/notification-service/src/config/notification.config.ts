@@ -33,7 +33,12 @@ export const notificationConfigSchema = Joi.object<NotificationConfig>({
   SMTP_USER: Joi.string().optional().allow(''),
   SMTP_PASSWORD: Joi.string().optional().allow(''),
   SMTP_SECURE: Joi.boolean().optional().default(false),
-  SMTP_FROM: Joi.string().email().required(),
+  // `tlds: false` because Joi otherwise checks the domain against the IANA
+  // list, which refuses the `.local` sender the compose stack is configured
+  // with — the service would not boot on its own defaults.
+  SMTP_FROM: Joi.string()
+    .email({ tlds: { allow: false } })
+    .required(),
 
   APP_PUBLIC_URL: Joi.string().uri().required(),
 });
