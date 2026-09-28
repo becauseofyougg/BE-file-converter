@@ -15,6 +15,7 @@ import {
   SetMetadata,
   UseGuards,
 } from '@nestjs/common';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
@@ -34,6 +35,12 @@ import {
   StartEmailChangeDto,
   UpdateUserDto,
 } from './dto/update-user.dto';
+import {
+  EmailChangedResponseDto,
+  ErrorResponseDto,
+  StartEmailChangeResponseDto,
+  UserProfileDto,
+} from '../shared/api-responses.dto';
 import { UserParamsDto } from './dto/user-params.dto';
 import {
   PROFILE_READ_RATE_LIMIT,
@@ -50,6 +57,18 @@ const ProfileReadLimit = (limit: number, ttlMs: number) =>
     ttlMs,
   } satisfies ProfileReadRateLimit);
 
+@ApiTags('users')
+@ApiParam({ name: 'userId', format: 'uuid', description: 'Whose profile.' })
+@ApiResponse({
+  status: 401,
+  description: 'No session.',
+  type: ErrorResponseDto,
+})
+@ApiResponse({
+  status: 404,
+  description: 'No such user — including one that has been erased.',
+  type: ErrorResponseDto,
+})
 @Controller('users')
 @UseGuards(ProfileReadRateLimitGuard)
 export class UsersController {
@@ -71,6 +90,17 @@ export class UsersController {
    * Two limits, measuring different things: 300/hour per IP for the route, and
    * 60/hour per *viewer* for reads of someone else's profile.
    */
+  @ApiOperation({
+    summary: 'Read a profile',
+    description:
+      'Self, or the holder of `users@read`. The fields returned differ between the two — see docs/USER-PROFILE.md §4.',
+  })
+  @ApiResponse({ status: 200, type: UserProfileDto })
+  @ApiResponse({
+    status: 403,
+    description: 'Not yours, and no `users@read`.',
+    type: ErrorResponseDto,
+  })
   @Get(':userId')
   @Throttle({ default: { limit: 300, ttl: HOUR_MS } })
   @ProfileReadLimit(60, HOUR_MS)
@@ -98,6 +128,23 @@ export class UsersController {
    * ignoring it would leave the client believing a change it can see in its own
    * form actually happened.
    */
+  @ApiOperation({
+    summary: 'Change a profile',
+    description:
+      'Self may change `displayName`; the holder of `users@update` may also change `email`. A field this caller may not write is refused, not ignored.',
+  })
+  @ApiResponse({ status: 200, type: UserProfileDto })
+  @ApiResponse({
+    status: 403,
+    description:
+      'No permission, or a field this caller may not write — a Self sending `email` gets `FIELD_NOT_WRITABLE`.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'That address belongs to another account.',
+    type: ErrorResponseDto,
+  })
   @Patch(':userId')
   @Throttle({ default: { limit: 60, ttl: HOUR_MS } })
   @ProfileReadLimit(60, HOUR_MS)
@@ -124,6 +171,17 @@ export class UsersController {
    * Tighter than the rest: this one sends mail to an address the caller chose,
    * so the per-IP ceiling is what stops it being used to post letters.
    */
+  @ApiOperation({
+    summary: 'Begin moving the account to a new address',
+    description:
+      'Self only. Sends a code or link to the address being claimed — an administrator changes an address directly through PATCH instead.',
+  })
+  @ApiResponse({ status: 200, type: StartEmailChangeResponseDto })
+  @ApiResponse({
+    status: 409,
+    description: 'That address belongs to another account.',
+    type: ErrorResponseDto,
+  })
   @Post(':userId/email-change')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: HOUR_MS } })
@@ -149,6 +207,17 @@ export class UsersController {
    * session here would break the ordinary case without adding a factor the
    * initiating request had not already supplied.
    */
+  @ApiOperation({
+    summary: 'Finish moving the account to a new address',
+    description:
+      'Needs no session: the link is opened in the new mailbox, often on another device. The secret is what authorises it.',
+  })
+  @ApiResponse({ status: 200, type: EmailChangedResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'The challenge is invalid, spent, or of the wrong type.',
+    type: ErrorResponseDto,
+  })
   @Post(':userId/email-change/confirm')
   @Public()
   @HttpCode(HttpStatus.OK)
@@ -177,6 +246,18 @@ export class UsersController {
    * this is the one irreversible thing the API does and a session found on an
    * unlocked laptop should not be enough to do it.
    */
+  @ApiOperation({
+    summary: 'Erase an account',
+    description:
+      'Anonymisation, not a row delete. The holder of `users@delete` gets `204`; a user erasing their own account gets `202` and must confirm by email first.',
+  })
+  @ApiResponse({ status: 204, description: 'Erased.' })
+  @ApiResponse({ status: 202, description: 'Confirm by email to finish.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Not yours, and no `users@delete`.',
+    type: ErrorResponseDto,
+  })
   @Delete(':userId')
   @Throttle({ default: { limit: 5, ttl: HOUR_MS } })
   @ProfileReadLimit(10, HOUR_MS)
@@ -215,6 +296,20 @@ export class UsersController {
    * destroys the account. Requiring both the session and the secret costs
    * nothing here and means an intercepted mail is not enough on its own.
    */
+  @ApiOperation({
+    summary: 'Confirm erasing your own account',
+    description:
+      'Requires a session **and** the emailed secret — unlike the email-change confirmation, because this one is irreversible.',
+  })
+  @ApiResponse({
+    status: 204,
+    description: 'Erased. The session cookies are cleared.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'The challenge is invalid, spent, or of the wrong type.',
+    type: ErrorResponseDto,
+  })
   @Post(':userId/deletion/confirm')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })

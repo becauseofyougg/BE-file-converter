@@ -25,7 +25,7 @@ import {
   UsersService,
   isEmailVerified,
   normalizeEmail,
-  type User,
+  type SafeUser,
 } from '../users/users.service';
 import { AuthSettingsService } from './auth-settings.service';
 import { PasswordService } from './password.service';
@@ -268,7 +268,7 @@ export class AuthService {
    * registration throttle is what makes enumeration expensive.
    */
   private async handleDuplicate(
-    existing: User,
+    existing: SafeUser,
     confirmationRequired: boolean,
     input: RegisterInput,
   ): Promise<RegisterResponse> {
@@ -330,7 +330,7 @@ export class AuthService {
    */
   private async resendQuietly(
     live: VerificationToken,
-    user: User,
+    user: SafeUser,
     correlationId: string,
   ): Promise<IssuedChallenge> {
     try {
@@ -359,7 +359,7 @@ export class AuthService {
   }
 
   private async issueAndAnnounce(
-    user: User,
+    user: SafeUser,
     eventName:
       | typeof DOMAIN_EVENTS.USER_REGISTERED
       | typeof DOMAIN_EVENTS.USER_VERIFICATION_RESENT,
@@ -382,7 +382,7 @@ export class AuthService {
    * registration cannot produce a mail about a user who does not exist.
    */
   private announce(
-    user: User,
+    user: SafeUser,
     challenge: IssuedChallenge,
     eventName:
       | typeof DOMAIN_EVENTS.USER_REGISTERED

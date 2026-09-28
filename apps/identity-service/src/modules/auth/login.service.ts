@@ -20,7 +20,7 @@ import {
   isDeleted,
   isEmailVerified,
   normalizeEmail,
-  type User,
+  type SafeUser,
 } from '../users/users.service';
 import { AuthSettingsService } from './auth-settings.service';
 import { PasswordService } from './password.service';
@@ -241,7 +241,7 @@ export class LoginService {
   }
 
   private async requireConfirmation(
-    user: User,
+    user: SafeUser,
     input: LoginInput,
   ): Promise<LoginResponse> {
     const challenge = await this.verification.issue(
@@ -278,7 +278,7 @@ export class LoginService {
     };
   }
 
-  private async issueSession(user: User) {
+  private async issueSession(user: SafeUser) {
     // Recorded here rather than after the password check, because a login
     // waiting on an emailed confirmation has not happened yet. This is the one
     // place a session actually comes into existence, and the same statement
@@ -296,7 +296,7 @@ export class LoginService {
     return this.tokens.issuePair(user, roles);
   }
 
-  private assertNotLocked(user: User): void {
+  private assertNotLocked(user: SafeUser): void {
     if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
       const retryAfterSeconds = Math.ceil(
         (user.lockedUntil.getTime() - Date.now()) / 1000,
@@ -323,7 +323,7 @@ export class LoginService {
    * long they keep at it, while a legitimate user who mistypes twice and then
    * succeeds is never slowed down at all.
    */
-  private async registerFailure(user: User): Promise<void> {
+  private async registerFailure(user: SafeUser): Promise<void> {
     const attempts = user.failedLoginAttempts + 1;
 
     if (attempts >= this.settings.maxFailedLoginAttempts()) {

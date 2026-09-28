@@ -11,8 +11,16 @@ import {
   SetMetadata,
   UseGuards,
 } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+
+import {
+  AcceptedDto,
+  ConfirmationRequiredDto,
+  ErrorResponseDto,
+  SessionResponseDto,
+} from '../shared/api-responses.dto';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { TokenPair } from '@contracts/messages/identity.messages';
@@ -44,6 +52,17 @@ const HOUR_MS = 60 * 60 * 1000;
 const EmailLimit = (limit: number, ttlMs: number) =>
   SetMetadata(EMAIL_RATE_LIMIT, { limit, ttlMs });
 
+@ApiTags('auth')
+@ApiResponse({
+  status: 400,
+  description: 'A field failed validation.',
+  type: ErrorResponseDto,
+})
+@ApiResponse({
+  status: 429,
+  description: 'Rate limited — per IP, per email, or per account.',
+  type: ErrorResponseDto,
+})
 @Controller('auth')
 // Registration and confirmation are how a caller *gets* a token, so they
 // cannot require one. The global JwtAuthGuard is opt-out for exactly this.
@@ -61,6 +80,26 @@ export class AuthController {
    * without parsing the body, and `202` is literally what happened — the
    * request was accepted and the work is not finished.
    */
+  @ApiOperation({
+    summary: 'Create an account',
+    description:
+      'With `AUTH_CONFIRM_REGISTRATION` off, answers `201` and signs the user in. With it on, answers `202` and no session until the address is confirmed.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Registered and signed in; both tokens set as cookies.',
+    type: SessionResponseDto,
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Registered; confirm the address to finish.',
+    type: ConfirmationRequiredDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'The address is already registered.',
+    type: ErrorResponseDto,
+  })
   @Post('register')
   @Throttle({ default: { limit: 5, ttl: HOUR_MS } })
   @EmailLimit(3, HOUR_MS)
@@ -101,6 +140,31 @@ export class AuthController {
    * password-spraying botnet aims at, and the per-IP throttle does nothing
    * against one that rotates addresses.
    */
+  @ApiOperation({
+    summary: 'Sign in',
+    description:
+      'An unknown address and a wrong password are indistinguishable, including in how long they take. A locked account and an unconfirmed address are told plainly — see `docs/AUTHENTICATION.md` §3.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Signed in; both tokens set as cookies.',
+    type: SessionResponseDto,
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Confirmation required before a session is issued.',
+    type: ConfirmationRequiredDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unknown address or wrong password — deliberately the same.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'The address has never been confirmed.',
+    type: ErrorResponseDto,
+  })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
@@ -136,6 +200,26 @@ export class AuthController {
    * Completes a login that was waiting on an emailed code or link. The magic
    * link points here — docs/AUTHENTICATION.md §1.3.2.
    */
+  @ApiOperation({
+    summary: 'Complete a login waiting on a code or link',
+    description:
+      'The magic link points here. Accepts `challengeId` + `code`, or a bare `token`.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Signed in.',
+    type: SessionResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'The challenge is invalid, spent, or of the wrong type.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 410,
+    description: 'The challenge expired.',
+    type: ErrorResponseDto,
+  })
   @Post('confirm')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
@@ -157,6 +241,12 @@ export class AuthController {
   }
 
   /** Always `202`, whatever became of the challenge. */
+  @ApiOperation({
+    summary: 'Send another login confirmation',
+    description:
+      'Always `202`, whatever became of the challenge — the resend interval is enforced by identity-service.',
+  })
+  @ApiResponse({ status: 202, type: AcceptedDto })
   @Post('resend-login-confirmation')
   @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
@@ -174,6 +264,26 @@ export class AuthController {
    * Confirming signs the user in: they have just proved the password (at
    * registration) and the address, so a second login round trip earns nothing.
    */
+  @ApiOperation({
+    summary: 'Confirm an email address',
+    description:
+      'Signs the user in on success: they have already proved the password at registration and the address here.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Confirmed and signed in.',
+    type: SessionResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'The challenge is invalid or spent.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 410,
+    description: 'The challenge expired.',
+    type: ErrorResponseDto,
+  })
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
@@ -200,6 +310,12 @@ export class AuthController {
    * identity-service, which is the only side that knows when the last mail
    * actually went out.
    */
+  @ApiOperation({
+    summary: 'Send another verification email',
+    description:
+      'Always `202`, whether the account exists, is already verified, or never existed.',
+  })
+  @ApiResponse({ status: 202, type: AcceptedDto })
   @Post('resend-verification')
   @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
@@ -222,6 +338,22 @@ export class AuthController {
    * `@Public()` by inheritance, and necessarily so: this is the endpoint a
    * client reaches for precisely *because* its access token has expired.
    */
+  @ApiOperation({
+    summary: 'Rotate the session',
+    description:
+      'Exchanges the `refresh_token` cookie for a whole new pair, and re-reads the roles — the one moment a revoked role takes effect.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Rotated; both cookies replaced.',
+    type: SessionResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description:
+      'No refresh cookie, or it is expired, forged or for an erased account.',
+    type: ErrorResponseDto,
+  })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   // Roomy, because a legitimate client refreshes about four times an hour and
@@ -264,6 +396,15 @@ export class AuthController {
    * It answers `204` unconditionally, including when no session was there to
    * begin with, because a client's next move is the same either way.
    */
+  @ApiOperation({
+    summary: 'Clear the session cookies',
+    description:
+      'The whole of a logout here. Refresh tokens are not stored, so nothing can be revoked server-side — see docs/AUTHORIZATION.md §5.',
+  })
+  @ApiResponse({
+    status: 204,
+    description: 'Cookies cleared, whether or not a session existed.',
+  })
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   logout(@Res({ passthrough: true }) reply: FastifyReply): void {

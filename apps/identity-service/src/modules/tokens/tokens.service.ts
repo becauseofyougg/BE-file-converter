@@ -43,7 +43,13 @@ export class TokensService {
    * confirmation, on login, and on every refresh — rotation is not a separate
    * path, it is this one called again.
    */
-  async issuePair(user: User, roles: string[]): Promise<TokenPair> {
+  async issuePair(
+    // The id is all a token carries of a user, so that is all this asks for —
+    // which also lets every caller pass a row selected without its password
+    // hash (NON-FUNCTIONAL-REQUIREMENTS.md §1).
+    user: Pick<User, 'id'>,
+    roles: string[],
+  ): Promise<TokenPair> {
     // The roles are baked in, so the gateway needs no lookup per request. The
     // cost is that a revoked role keeps working until the token expires — see
     // docs/RBAC.md §1.3.1; `JWT_ACCESS_TTL` is the size of that window.

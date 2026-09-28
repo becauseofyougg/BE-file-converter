@@ -15,6 +15,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiCookieAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClientProxy } from '@nestjs/microservices';
 import type { FastifyRequest } from 'fastify';
 
@@ -55,6 +56,13 @@ import { Permissions, RbacGuard } from './rbac.guard';
  * travels with each call for the audit trail only — identity never authorises
  * on it, because a value the gateway puts in a message is not a credential.
  */
+@ApiTags('admin')
+@ApiCookieAuth('access_token')
+@ApiResponse({
+  status: 403,
+  description:
+    'Writes need `rbac@manage`; reads need `rbac@read`. Changes apply without a restart — a write publishes `rbac.updated` and every gateway replica reloads its cache.',
+})
 @Controller('admin/rbac')
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Permissions('rbac@manage')

@@ -48,6 +48,16 @@ export default tseslint.config(
       // `expect.objectContaining` and the other asymmetric matchers are typed
       // `any`, so every assertion built from one trips this.
       '@typescript-eslint/no-unsafe-assignment': 'off',
+      // `jest.Mock.mock.calls` is `any[][]`, so reaching into it to assert on
+      // what a collaborator was called with trips both of these on every
+      // `calls[0][1]`. The `any` originates in Jest's own types, not in the
+      // code under test — which is what these rules exist to catch. Off here,
+      // and on everywhere else.
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      // Joi types a validated value as `any` whatever the schema's generic
+      // says, so every assertion about a default trips it.
+      '@typescript-eslint/no-unsafe-call': 'off',
     },
   },
 );

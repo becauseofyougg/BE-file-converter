@@ -1,8 +1,19 @@
 import { randomUUID } from 'node:crypto';
 
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  ApiCookieAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyRequest } from 'fastify';
+
+import {
+  ErrorResponseDto,
+  UserListResponseDto,
+} from '../shared/api-responses.dto';
 
 import type {
   ListUsersResponse,
@@ -36,6 +47,18 @@ const HOUR_MS = 60 * 60 * 1000;
  * Identity checks it again — a value the gateway puts in a message is not a
  * credential.
  */
+@ApiTags('admin')
+@ApiCookieAuth('access_token')
+@ApiResponse({
+  status: 401,
+  description: 'No session.',
+  type: ErrorResponseDto,
+})
+@ApiResponse({
+  status: 403,
+  description: 'The caller does not hold `users@list`.',
+  type: ErrorResponseDto,
+})
 @Controller('admin/users')
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Permissions('users@list')
@@ -46,6 +69,18 @@ export class AdminUsersController {
    * Paginated by cursor, never by offset. `?limit=` is bounded at both ends by
    * the DTO, so no single request can ask for the whole table.
    */
+  @ApiOperation({
+    summary: 'List accounts',
+    description:
+      'Cursor-paginated, never offset. `nextCursor` is opaque and only valid for the sort it was issued under — changing `sort` mid-pagination is a `400`, because a position in one ordering means nothing in another.',
+  })
+  @ApiResponse({ status: 200, type: UserListResponseDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      'A malformed cursor, one from a different sort, or a value outside one of the closed sets.',
+    type: ErrorResponseDto,
+  })
   @Get()
   @Throttle({ default: { limit: 120, ttl: HOUR_MS } })
   listUsers(
