@@ -75,13 +75,13 @@ shape of the config to anyone probing it.
 ## 4. Where the decision happens
 
 ```
-client ──HTTP──> api-gateway                         identity-service
-                  │ JwtAuthGuard   (verify, locally)   owns roles/permissions/grants
-                  │ RbacGuard      (decide, locally)   builds + caches the config
-                  │      ▲                                    │
-                  │      └── RbacConfigCache <──RPC──── rbac.get-config
-                  │                  ▲                        │
-                  └──────────────────┴───rbac.updated────── outbox → domain.events
+client ──HTTP──> api-gateway                              identity-service
+                  │ AuthenticationGuard (verify, locally)   owns roles/permissions/grants
+                  │ RbacGuard           (decide, locally)   builds + caches the config
+                  │      ▲                                         │
+                  │      └── RbacConfigCache <──RPC───────── rbac.get-config
+                  │                  ▲                             │
+                  └──────────────────┴───rbac.updated─────────── outbox → domain.events
 ```
 
 The gateway holds the config and decides without I/O. The alternative — asking identity per request —
@@ -202,7 +202,7 @@ promotion is recorded as something a human did.
 | Admin logic, §6–7 | [roles](../apps/identity-service/src/modules/rbac/roles.service.ts), [permissions](../apps/identity-service/src/modules/rbac/permissions.service.ts), [grants](../apps/identity-service/src/modules/rbac/grants.service.ts) |
 | Role assignment, §8 | [user-roles.service.ts](../apps/identity-service/src/modules/rbac/user-roles.service.ts) |
 | RPC surface | [rbac.controller.ts](../apps/identity-service/src/modules/rbac/rbac.controller.ts) |
-| Authentication, §4 | [jwt-auth.guard.ts](../apps/api-gateway/src/modules/auth/jwt-auth.guard.ts) |
+| Authentication, §4 | [authentication.guard.ts](../apps/api-gateway/src/modules/auth/authentication.guard.ts), [jwt.authenticator.ts](../apps/api-gateway/src/modules/auth/authenticators/jwt.authenticator.ts) |
 | Enforcement, §3 | [rbac.guard.ts](../apps/api-gateway/src/modules/rbac/rbac.guard.ts) |
 | Gateway cache + listener, §5 | [rbac-config.cache.ts](../apps/api-gateway/src/modules/rbac/rbac-config.cache.ts), [rbac-events.controller.ts](../apps/api-gateway/src/modules/rbac/rbac-events.controller.ts) |
 | HTTP admin surface, §6 | [rbac-admin.controller.ts](../apps/api-gateway/src/modules/rbac/rbac-admin.controller.ts) |

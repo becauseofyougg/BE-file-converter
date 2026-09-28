@@ -132,7 +132,7 @@ cannot be cashed in after one.
 |---|---|
 | The flow, §2–5 | [login.service.ts](../apps/identity-service/src/modules/auth/login.service.ts) |
 | Lockout state | [users.service.ts](../apps/identity-service/src/modules/users/users.service.ts), [migration](../apps/identity-service/prisma/migrations/20260922140000_login_lockout/) |
-| Timing equalisation, §3 | [password.service.ts](../apps/identity-service/src/modules/auth/password.service.ts) |
+| Timing equalisation, §3 | [argon2-password-hasher.ts](../apps/identity-service/src/modules/auth/argon2-password-hasher.ts) |
 | Challenge lifecycle, §4 | [verification.service.ts](../apps/identity-service/src/modules/auth/verification.service.ts) |
 | Flags and limits | [auth-settings.service.ts](../apps/identity-service/src/modules/auth/auth-settings.service.ts) |
 | HTTP surface | [gateway auth.controller.ts](../apps/api-gateway/src/modules/auth/auth.controller.ts) |

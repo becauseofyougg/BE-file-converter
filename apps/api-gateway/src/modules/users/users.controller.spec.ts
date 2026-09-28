@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
-import type { RequestUser } from '../auth/jwt-auth.guard';
+import type { RequestUser } from '../auth/request-user';
 import type { SessionCookiesService } from '../auth/session-cookies.service';
 import { UsersController } from './users.controller';
 import type { UsersService } from './users.service';

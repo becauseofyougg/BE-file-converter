@@ -186,10 +186,10 @@ redaction list covers `req.headers.cookie`, `set-cookie`, `*.accessToken` and
 
 | Concern | File |
 |---|---|
-| Signing, verifying, rotation, §2 | [tokens.service.ts](../apps/identity-service/src/modules/tokens/tokens.service.ts) |
+| Signing, verifying, rotation, §2 | [jwt-token-issuer.ts](../apps/identity-service/src/modules/tokens/jwt-token-issuer.ts), behind the [TokenIssuer](../apps/identity-service/src/modules/tokens/token-issuer.ts) port |
 | Refresh, §4 | [refresh.service.ts](../apps/identity-service/src/modules/auth/refresh.service.ts) |
 | Cookie attributes, §3 | [session-cookies.service.ts](../apps/api-gateway/src/modules/auth/session-cookies.service.ts) |
-| Per-request verification, §3 | [jwt-auth.guard.ts](../apps/api-gateway/src/modules/auth/jwt-auth.guard.ts) |
+| Per-request verification, §3 | [jwt.authenticator.ts](../apps/api-gateway/src/modules/auth/authenticators/jwt.authenticator.ts), run by [authentication.guard.ts](../apps/api-gateway/src/modules/auth/authentication.guard.ts) |
 | `/auth/refresh`, `/auth/logout` | [gateway auth.controller.ts](../apps/api-gateway/src/modules/auth/auth.controller.ts) |
 | Cookie config and its defaults | [config.validation.ts](../libs/core/src/config/config.validation.ts) |
 

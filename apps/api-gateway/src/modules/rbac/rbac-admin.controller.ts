@@ -29,11 +29,8 @@ import {
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
 import { IDENTITY_CLIENT } from '../../messaging/messaging.module';
 import { sendRpc } from '../../messaging/rpc';
-import {
-  CurrentUser,
-  JwtAuthGuard,
-  type RequestUser,
-} from '../auth/jwt-auth.guard';
+import { AuthenticationGuard } from '../auth/authentication.guard';
+import { CurrentUser, type RequestUser } from '../auth/request-user';
 import {
   AssignUserRolesDto,
   CreateGrantDto,
@@ -64,7 +61,7 @@ import { Permissions, RbacGuard } from './rbac.guard';
     'Writes need `rbac@manage`; reads need `rbac@read`. Changes apply without a restart — a write publishes `rbac.updated` and every gateway replica reloads its cache.',
 })
 @Controller('admin/rbac')
-@UseGuards(JwtAuthGuard, RbacGuard)
+@UseGuards(AuthenticationGuard, RbacGuard)
 @Permissions('rbac@manage')
 export class RbacAdminController {
   constructor(

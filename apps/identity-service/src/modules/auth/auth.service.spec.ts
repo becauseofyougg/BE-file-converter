@@ -21,11 +21,12 @@ import { DOMAIN_EVENTS } from '@contracts/events/domain.events';
 import { AppError } from '@core/errors/app-error';
 import { OutboxService } from '../outbox/outbox.service';
 import { UserRolesService } from '../rbac/user-roles.service';
-import { TokensService } from '../tokens/tokens.service';
+import type { TokenIssuer } from '../tokens/token-issuer';
 import { UsersService, type User } from '../users/users.service';
 import { AuthService } from './auth.service';
 import { AuthSettingsService } from './auth-settings.service';
-import { PasswordService } from './password.service';
+import type { PasswordHasher } from './password-hasher';
+import type { PasswordPolicy } from './password-policy';
 import {
   VerificationService,
   type VerificationToken,
@@ -49,9 +50,10 @@ function buildUser(overrides: Partial<User> = {}): User {
 
 describe('AuthService', () => {
   let users: jest.Mocked<UsersService>;
-  let passwords: jest.Mocked<PasswordService>;
+  let passwords: jest.Mocked<PasswordHasher>;
+  let policy: jest.Mocked<PasswordPolicy>;
   let verification: jest.Mocked<VerificationService>;
-  let tokens: jest.Mocked<TokensService>;
+  let tokens: jest.Mocked<TokenIssuer>;
   let outbox: jest.Mocked<OutboxService>;
   let settings: jest.Mocked<AuthSettingsService>;
   let userRoles: jest.Mocked<UserRolesService>;
@@ -76,8 +78,12 @@ describe('AuthService', () => {
     passwords = {
       hash: jest.fn().mockResolvedValue('$argon2id$stub'),
       verify: jest.fn(),
+      burnVerificationTime: jest.fn(),
+    };
+
+    policy = {
       assertMeetsPolicy: jest.fn(),
-    } as unknown as jest.Mocked<PasswordService>;
+    } as unknown as jest.Mocked<PasswordPolicy>;
 
     verification = {
       issue: jest.fn().mockResolvedValue(challenge),
@@ -97,8 +103,8 @@ describe('AuthService', () => {
         accessTokenExpiresAt: new Date().toISOString(),
         refreshTokenExpiresAt: new Date().toISOString(),
       }),
-      revokeAllForUser: jest.fn(),
-    } as unknown as jest.Mocked<TokensService>;
+      verifyRefresh: jest.fn(),
+    };
 
     outbox = {
       publish: jest.fn().mockResolvedValue(undefined),
@@ -120,6 +126,7 @@ describe('AuthService', () => {
     service = new AuthService(
       users,
       passwords,
+      policy,
       verification,
       tokens,
       outbox,
@@ -187,7 +194,7 @@ describe('AuthService', () => {
     });
 
     it('creates nothing when the password fails the policy', async () => {
-      passwords.assertMeetsPolicy.mockImplementation(() => {
+      policy.assertMeetsPolicy.mockImplementation(() => {
         throw new AppError(ERROR_CODES.PASSWORD_TOO_WEAK, 'too weak', 400);
       });
 

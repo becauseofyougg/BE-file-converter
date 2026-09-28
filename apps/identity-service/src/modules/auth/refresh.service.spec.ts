@@ -1,8 +1,7 @@
 import { ERROR_CODES } from '@contracts/errors/error-codes';
-import { REFRESH_TOKEN_TYPE } from '@contracts/messages/identity.messages';
 import { AppError } from '@core/errors/app-error';
 import { UserRolesService } from '../rbac/user-roles.service';
-import { TokensService } from '../tokens/tokens.service';
+import type { TokenIssuer } from '../tokens/token-issuer';
 import { UsersService, type User } from '../users/users.service';
 import { RefreshService } from './refresh.service';
 
@@ -25,7 +24,7 @@ function buildUser(overrides: Partial<User> = {}): User {
 
 describe('RefreshService', () => {
   let users: jest.Mocked<UsersService>;
-  let tokens: jest.Mocked<TokensService>;
+  let tokens: jest.Mocked<TokenIssuer>;
   let userRoles: jest.Mocked<UserRolesService>;
   let service: RefreshService;
 
@@ -35,18 +34,14 @@ describe('RefreshService', () => {
     } as unknown as jest.Mocked<UsersService>;
 
     tokens = {
-      verifyRefresh: jest.fn().mockResolvedValue({
-        sub: 'user-1',
-        jti: 'jti-1',
-        typ: REFRESH_TOKEN_TYPE,
-      }),
+      verifyRefresh: jest.fn().mockResolvedValue({ userId: 'user-1' }),
       issuePair: jest.fn().mockResolvedValue({
         accessToken: 'access',
         refreshToken: 'refresh',
         accessTokenExpiresAt: new Date().toISOString(),
         refreshTokenExpiresAt: new Date().toISOString(),
       }),
-    } as unknown as jest.Mocked<TokensService>;
+    } as unknown as jest.Mocked<TokenIssuer>;
 
     userRoles = {
       namesFor: jest.fn().mockResolvedValue(['USER']),

@@ -8,7 +8,7 @@ import {
 } from 'class-validator';
 
 import type { LoginRequest } from '@contracts/messages/identity.messages';
-import { PASSWORD_MAX_LENGTH } from '../password.service';
+import { PASSWORD_MAX_LENGTH } from '../password-policy';
 import { OTP_LENGTH } from '../verification.service';
 
 /**

@@ -5,7 +5,7 @@ import type { FastifyRequest } from 'fastify';
 
 import { RBAC_PATTERNS } from '@contracts/messages/rbac.messages';
 
-import type { RequestUser } from '../auth/jwt-auth.guard';
+import type { RequestUser } from '../auth/request-user';
 import { RbacAdminController } from './rbac-admin.controller';
 import { REQUIRED_PERMISSIONS } from './rbac.guard';
 

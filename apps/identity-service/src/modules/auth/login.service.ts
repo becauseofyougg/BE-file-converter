@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Transactional } from '@nestjs-cls/transactional';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
@@ -14,7 +14,7 @@ import {
 import { AppError } from '@core/errors/app-error';
 import { OutboxService } from '../outbox/outbox.service';
 import { UserRolesService } from '../rbac/user-roles.service';
-import { TokensService, type SessionContext } from '../tokens/tokens.service';
+import { TOKEN_ISSUER, type TokenIssuer } from '../tokens/token-issuer';
 import {
   UsersService,
   isDeleted,
@@ -23,7 +23,8 @@ import {
   type SafeUser,
 } from '../users/users.service';
 import { AuthSettingsService } from './auth-settings.service';
-import { PasswordService } from './password.service';
+import { PASSWORD_HASHER, type PasswordHasher } from './password-hasher';
+import type { SessionContext } from './session-context';
 import { VerificationService } from './verification.service';
 
 /**
@@ -54,9 +55,9 @@ export class LoginService {
 
   constructor(
     private readonly users: UsersService,
-    private readonly passwords: PasswordService,
+    @Inject(PASSWORD_HASHER) private readonly passwords: PasswordHasher,
     private readonly verification: VerificationService,
-    private readonly tokens: TokensService,
+    @Inject(TOKEN_ISSUER) private readonly tokens: TokenIssuer,
     private readonly outbox: OutboxService,
     private readonly settings: AuthSettingsService,
     private readonly userRoles: UserRolesService,

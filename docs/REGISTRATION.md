@@ -353,8 +353,9 @@ does not send a second letter.
 | Flags, behind the swappable interface of §2 | [auth-settings.service.ts](../apps/identity-service/src/modules/auth/auth-settings.service.ts) |
 | Register / verify / resend | [auth.service.ts](../apps/identity-service/src/modules/auth/auth.service.ts) |
 | Challenge lifecycle, §5 | [verification.service.ts](../apps/identity-service/src/modules/auth/verification.service.ts) |
-| argon2id and the password policy, §4.1 | [password.service.ts](../apps/identity-service/src/modules/auth/password.service.ts) |
-| Access + refresh tokens, §12 | [tokens.service.ts](../apps/identity-service/src/modules/tokens/tokens.service.ts) |
+| argon2id, §4.1 | [argon2-password-hasher.ts](../apps/identity-service/src/modules/auth/argon2-password-hasher.ts) |
+| The password policy, §4.1 | [password-policy.ts](../apps/identity-service/src/modules/auth/password-policy.ts) |
+| Access + refresh tokens, §12 | [jwt-token-issuer.ts](../apps/identity-service/src/modules/tokens/jwt-token-issuer.ts) |
 | Outbox and its relay, §4.2 | [modules/outbox/](../apps/identity-service/src/modules/outbox/) |
 | Cleanup, §7 | [verification-cleanup.job.ts](../apps/identity-service/src/modules/auth/verification-cleanup.job.ts) |
 | Schema, §7 | [schema.prisma](../apps/identity-service/prisma/schema.prisma) and its [migration](../apps/identity-service/prisma/migrations/) |

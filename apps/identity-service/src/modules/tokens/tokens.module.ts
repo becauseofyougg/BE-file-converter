@@ -3,8 +3,15 @@ import { JwtModule, type JwtSignOptions } from '@nestjs/jwt';
 
 import { ConfigService } from '@core/config/config.service';
 import { IdentityConfig } from '../../config/identity.config';
-import { TokensService } from './tokens.service';
+import { JwtTokenIssuer } from './jwt-token-issuer';
+import { TOKEN_ISSUER } from './token-issuer';
 
+/**
+ * Exports the {@link TOKEN_ISSUER} port, not the class behind it, so nothing
+ * outside this module can come to depend on the JWT implementation. Swapping
+ * it is the `useExisting` line below, plus whatever the replacement imports in
+ * place of `JwtModule`.
+ */
 @Module({
   imports: [
     JwtModule.registerAsync({
@@ -22,7 +29,10 @@ import { TokensService } from './tokens.service';
       }),
     }),
   ],
-  providers: [TokensService],
-  exports: [TokensService],
+  providers: [
+    JwtTokenIssuer,
+    { provide: TOKEN_ISSUER, useExisting: JwtTokenIssuer },
+  ],
+  exports: [TOKEN_ISSUER],
 })
 export class TokensModule {}

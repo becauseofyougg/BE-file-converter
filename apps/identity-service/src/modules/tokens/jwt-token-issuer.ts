@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import type { User } from '@prisma-clients/identity';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import {
@@ -14,24 +13,24 @@ import {
 import { ConfigService } from '@core/config/config.service';
 import { AppError } from '@core/errors/app-error';
 import { IdentityConfig } from '../../config/identity.config';
-
-export interface SessionContext {
-  userAgent?: string;
-  ip?: string;
-}
+import type { RefreshSubject, TokenIssuer } from './token-issuer';
 
 /**
- * Issues and verifies the two tokens of a session.
+ * The {@link TokenIssuer} in use: two HS256 JWTs, signed with separate secrets.
  *
  * **Nothing is persisted.** docs/AUTHORIZATION.md §1 forbids a server-side
  * record of a refresh token — no allowlist, no denylist, no `jti` table, no
  * session row. A refresh token is therefore valid for its full lifetime and
  * cannot be recalled; the consequences, and the two things that still limit
  * the damage, are §5 of that document.
+ *
+ * The gateway verifies the access token itself with the same `JWT_SECRET`
+ * (`JwtAuthenticator`). Change the algorithm here and it changes there too —
+ * the two are the only places that know the access token is a JWT.
  */
 @Injectable()
-export class TokensService {
-  private readonly logger = new Logger(TokensService.name);
+export class JwtTokenIssuer implements TokenIssuer {
+  private readonly logger = new Logger(JwtTokenIssuer.name);
 
   constructor(
     private readonly jwt: JwtService,
@@ -47,7 +46,7 @@ export class TokensService {
     // The id is all a token carries of a user, so that is all this asks for —
     // which also lets every caller pass a row selected without its password
     // hash (NON-FUNCTIONAL-REQUIREMENTS.md §1).
-    user: Pick<User, 'id'>,
+    user: { id: string },
     roles: string[],
   ): Promise<TokenPair> {
     // The roles are baked in, so the gateway needs no lookup per request. The
@@ -84,7 +83,7 @@ export class TokensService {
    * state left to check against (§1.3.2 of the requirement is explicit that a
    * refresh carries no further server-side verification).
    */
-  async verifyRefresh(token: string): Promise<RefreshTokenClaims> {
+  async verifyRefresh(token: string): Promise<RefreshSubject> {
     let claims: RefreshTokenClaims;
 
     try {
@@ -116,7 +115,7 @@ export class TokensService {
       throw refreshRejected();
     }
 
-    return claims;
+    return { userId: claims.sub };
   }
 
   private refreshSecret(): string {

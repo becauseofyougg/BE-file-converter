@@ -26,7 +26,8 @@ import type {
   UserProfile,
 } from '@contracts/messages/users.messages';
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
-import { CurrentUser, Public, type RequestUser } from '../auth/jwt-auth.guard';
+import { Public } from '@core/auth/public.decorator';
+import { CurrentUser, type RequestUser } from '../auth/request-user';
 import { SessionCookiesService } from '../auth/session-cookies.service';
 import {
   ConfirmDeletionDto,

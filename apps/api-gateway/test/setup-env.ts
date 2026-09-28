@@ -10,6 +10,9 @@ process.env.LOG_LEVEL = 'error';
 process.env.HEALTH_CHECK_ENABLED = 'true';
 
 process.env.COOKIE_SECRET = 'test-cookie-secret';
+// Set here rather than inherited from a developer's `.env`, which the suite
+// otherwise depended on without saying so — and the auth tests sign with it.
+process.env.JWT_SECRET = 'e2e-access-secret-that-is-long-enough';
 process.env.CORS_ORIGINS = 'http://localhost:5174';
 
 process.env.THROTTLE_GLOBAL_TTL = '10000';

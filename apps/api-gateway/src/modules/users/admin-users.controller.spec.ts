@@ -4,7 +4,7 @@ import type { FastifyRequest } from 'fastify';
 import { AdminUsersController } from './admin-users.controller';
 import type { UsersService } from './users.service';
 import { REQUIRED_PERMISSIONS } from '../rbac/rbac.guard';
-import type { RequestUser } from '../auth/jwt-auth.guard';
+import type { RequestUser } from '../auth/request-user';
 
 const ADMIN: RequestUser = { id: 'admin-1', roles: ['ADMIN'], tokenId: 'jti' };
 

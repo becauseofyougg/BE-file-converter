@@ -126,10 +126,15 @@ tweak.
 
 ## Authentication and authorisation
 
-Two global guards on the gateway, in order: `JwtAuthGuard` verifies the access token locally,
+Two global guards on the gateway, in order: `AuthenticationGuard` establishes who is calling,
 `RbacGuard` decides against a cached RBAC config. Both are `APP_GUARD`, so **every route is
 authenticated unless it declares `@Public()`** — opt-out, so a new controller is protected by the fact
 that nobody did anything.
+
+The authentication guard knows no scheme: it asks a list of `Authenticator`s, today just the JWT one.
+Token issuing and password hashing sit behind ports in identity the same way, so adding API keys,
+moving to RS256 or bringing in an external IdP is a new implementation rather than a rewrite
+([docs/AUTH-EXTENSION-POINTS.md](docs/AUTH-EXTENSION-POINTS.md)).
 
 ```ts
 @Controller('conversions')

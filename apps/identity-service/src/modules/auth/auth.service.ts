@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Transactional } from '@nestjs-cls/transactional';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
@@ -20,7 +20,7 @@ import {
 import { AppError } from '@core/errors/app-error';
 import { OutboxService } from '../outbox/outbox.service';
 import { UserRolesService } from '../rbac/user-roles.service';
-import { TokensService, type SessionContext } from '../tokens/tokens.service';
+import { TOKEN_ISSUER, type TokenIssuer } from '../tokens/token-issuer';
 import {
   UsersService,
   isEmailVerified,
@@ -28,7 +28,9 @@ import {
   type SafeUser,
 } from '../users/users.service';
 import { AuthSettingsService } from './auth-settings.service';
-import { PasswordService } from './password.service';
+import { PASSWORD_HASHER, type PasswordHasher } from './password-hasher';
+import { PasswordPolicy } from './password-policy';
+import type { SessionContext } from './session-context';
 import {
   VerificationService,
   type IssuedChallenge,
@@ -62,9 +64,10 @@ export class AuthService {
 
   constructor(
     private readonly users: UsersService,
-    private readonly passwords: PasswordService,
+    @Inject(PASSWORD_HASHER) private readonly passwords: PasswordHasher,
+    private readonly policy: PasswordPolicy,
     private readonly verification: VerificationService,
-    private readonly tokens: TokensService,
+    @Inject(TOKEN_ISSUER) private readonly tokens: TokenIssuer,
     private readonly outbox: OutboxService,
     private readonly settings: AuthSettingsService,
     private readonly userRoles: UserRolesService,
@@ -83,7 +86,7 @@ export class AuthService {
     const email = normalizeEmail(input.email);
     const confirmationRequired = this.settings.confirmRegistration();
 
-    this.passwords.assertMeetsPolicy(input.password);
+    this.policy.assertMeetsPolicy(input.password);
 
     const passwordHash = await this.passwords.hash(input.password);
     const existing = await this.users.findByEmail(email);

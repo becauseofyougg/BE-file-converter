@@ -9,7 +9,7 @@ import { PrismaService } from '../../database/prisma.service';
 export type { User };
 
 /**
- * Deliberately not a valid argon2 encoding, so `PasswordService.verify` throws
+ * Deliberately not a valid argon2 encoding, so `PasswordHasher.verify` throws
  * internally and returns false rather than ever comparing anything.
  */
 const ERASED_PASSWORD_HASH = 'erased';

@@ -1,10 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { RefreshResponse } from '@contracts/messages/identity.messages';
 import { AppError } from '@core/errors/app-error';
 import { UserRolesService } from '../rbac/user-roles.service';
-import { TokensService } from '../tokens/tokens.service';
+import { TOKEN_ISSUER, type TokenIssuer } from '../tokens/token-issuer';
 import {
   UsersService,
   isDeleted,
@@ -32,14 +32,14 @@ export class RefreshService {
 
   constructor(
     private readonly users: UsersService,
-    private readonly tokens: TokensService,
+    @Inject(TOKEN_ISSUER) private readonly tokens: TokenIssuer,
     private readonly userRoles: UserRolesService,
   ) {}
 
   async refresh(input: RefreshInput): Promise<RefreshResponse> {
-    const claims = await this.tokens.verifyRefresh(input.refreshToken);
+    const { userId } = await this.tokens.verifyRefresh(input.refreshToken);
 
-    const user = await this.users.findById(claims.sub);
+    const user = await this.users.findById(userId);
 
     // §1.3.1 steps 3–4: resolve the subject and check the account is still one
     // that may hold a session. A user deleted since the token was signed still
@@ -57,7 +57,7 @@ export class RefreshService {
           : isDeleted(user)
             ? 'account_deleted'
             : 'email_not_verified',
-        userId: claims.sub,
+        userId,
       });
 
       throw new AppError(

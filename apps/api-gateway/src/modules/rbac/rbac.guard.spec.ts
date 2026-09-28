@@ -8,7 +8,7 @@ import type {
 } from '@contracts/messages/rbac.messages';
 import { AppError } from '@core/errors/app-error';
 import { emptyRbacConfig } from '@core/rbac/rbac-policy';
-import type { RequestUser } from '../auth/jwt-auth.guard';
+import type { RequestUser } from '../auth/request-user';
 import { RbacConfigCache } from './rbac-config.cache';
 import { RbacGuard } from './rbac.guard';
 
