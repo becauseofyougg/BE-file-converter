@@ -20,11 +20,8 @@ import type {
   UserListItem,
 } from '@contracts/messages/users.messages';
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
-import {
-  CurrentUser,
-  JwtAuthGuard,
-  type RequestUser,
-} from '../auth/jwt-auth.guard';
+import { AuthenticationGuard } from '../auth/authentication.guard';
+import { CurrentUser, type RequestUser } from '../auth/request-user';
 import { Permissions, RbacGuard } from '../rbac/rbac.guard';
 import { ListUsersQueryDto } from './dto/list-users.dto';
 import { UsersService } from './users.service';
@@ -60,7 +57,7 @@ const HOUR_MS = 60 * 60 * 1000;
   type: ErrorResponseDto,
 })
 @Controller('admin/users')
-@UseGuards(JwtAuthGuard, RbacGuard)
+@UseGuards(AuthenticationGuard, RbacGuard)
 @Permissions('users@list')
 export class AdminUsersController {
   constructor(private readonly users: UsersService) {}

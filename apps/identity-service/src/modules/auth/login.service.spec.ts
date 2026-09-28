@@ -21,11 +21,11 @@ import { VERIFICATION_TOKEN_TYPES } from '@contracts/messages/identity.messages'
 import { AppError } from '@core/errors/app-error';
 import { OutboxService } from '../outbox/outbox.service';
 import { UserRolesService } from '../rbac/user-roles.service';
-import { TokensService } from '../tokens/tokens.service';
+import type { TokenIssuer } from '../tokens/token-issuer';
 import { UsersService, type User } from '../users/users.service';
 import { AuthSettingsService } from './auth-settings.service';
 import { LOCKOUT_MS, LoginService, MAX_FAILED_ATTEMPTS } from './login.service';
-import { PasswordService } from './password.service';
+import type { PasswordHasher } from './password-hasher';
 import type { VerificationToken } from './verification.service';
 import { VerificationService } from './verification.service';
 
@@ -48,9 +48,9 @@ function buildUser(overrides: Partial<User> = {}): User {
 
 describe('LoginService', () => {
   let users: jest.Mocked<UsersService>;
-  let passwords: jest.Mocked<PasswordService>;
+  let passwords: jest.Mocked<PasswordHasher>;
   let verification: jest.Mocked<VerificationService>;
-  let tokens: jest.Mocked<TokensService>;
+  let tokens: jest.Mocked<TokenIssuer>;
   let outbox: jest.Mocked<OutboxService>;
   let settings: jest.Mocked<AuthSettingsService>;
   let userRoles: jest.Mocked<UserRolesService>;
@@ -76,7 +76,7 @@ describe('LoginService', () => {
     passwords = {
       verify: jest.fn().mockResolvedValue(true),
       burnVerificationTime: jest.fn().mockResolvedValue(undefined),
-    } as unknown as jest.Mocked<PasswordService>;
+    } as unknown as jest.Mocked<PasswordHasher>;
 
     verification = {
       issue: jest.fn().mockResolvedValue(challenge),
@@ -93,7 +93,7 @@ describe('LoginService', () => {
         accessTokenExpiresAt: new Date().toISOString(),
         refreshTokenExpiresAt: new Date().toISOString(),
       }),
-    } as unknown as jest.Mocked<TokensService>;
+    } as unknown as jest.Mocked<TokenIssuer>;
 
     outbox = {
       publish: jest.fn().mockResolvedValue(undefined),

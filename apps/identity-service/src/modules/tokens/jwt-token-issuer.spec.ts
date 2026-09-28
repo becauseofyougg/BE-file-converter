@@ -5,7 +5,7 @@ import type { AccessTokenClaims } from '@contracts/messages/identity.messages';
 import { ConfigService } from '@core/config/config.service';
 import type { AppError } from '@core/errors/app-error';
 import type { User } from '../users/users.service';
-import { TokensService, parseDuration } from './tokens.service';
+import { JwtTokenIssuer, parseDuration } from './jwt-token-issuer';
 
 const ACCESS_SECRET = 'access-secret-that-is-long-enough-for-joi';
 const REFRESH_SECRET = 'refresh-secret-that-is-long-enough-x';
@@ -21,9 +21,9 @@ function buildUser(): User {
   return { id: 'user-1', email: 'user@example.com' } as User;
 }
 
-describe('TokensService', () => {
+describe('JwtTokenIssuer', () => {
   let jwt: JwtService;
-  let service: TokensService;
+  let service: JwtTokenIssuer;
 
   beforeEach(() => {
     jwt = new JwtService({
@@ -36,7 +36,7 @@ describe('TokensService', () => {
       getNumber: (key: string) => Number(CONFIG[key]),
     } as unknown as ConfigService<never>;
 
-    service = new TokensService(jwt, config);
+    service = new JwtTokenIssuer(jwt, config);
   });
 
   describe('issuePair', () => {
@@ -84,11 +84,34 @@ describe('TokensService', () => {
   });
 
   describe('verifyRefresh', () => {
-    it('accepts a refresh token it issued', async () => {
+    /**
+     * The subject and nothing else: `jti` and `typ` are how this
+     * implementation checks itself, and a caller that came to read them would
+     * tie the port to JWT again.
+     */
+    it('accepts a refresh token it issued, and says only whose it is', async () => {
       const pair = await service.issuePair(buildUser(), ['USER']);
 
-      await expect(service.verifyRefresh(pair.refreshToken)).resolves.toEqual(
-        expect.objectContaining({ sub: 'user-1', typ: 'refresh' }),
+      await expect(service.verifyRefresh(pair.refreshToken)).resolves.toEqual({
+        userId: 'user-1',
+      });
+    });
+
+    /**
+     * The RPC boundary no longer checks the shape, so a malformed cookie
+     * reaches this — and must get the same 401 as every other bad token, not
+     * the 500 a validation failure would have become.
+     */
+    it.each([
+      ['a bare word', 'not-a-jwt'],
+      ['two segments', 'a.b'],
+      ['three segments of nonsense', 'a.b.c'],
+    ])('refuses %s like any other bad token', async (_label, garbage) => {
+      await expect(service.verifyRefresh(garbage)).rejects.toThrow(
+        expect.objectContaining({
+          code: ERROR_CODES.UNAUTHENTICATED,
+          httpStatus: 401,
+        }),
       );
     });
 

@@ -39,7 +39,7 @@ import {
   EMAIL_RATE_LIMIT,
   EmailRateLimitGuard,
 } from './email-rate-limit.guard';
-import { Public } from './jwt-auth.guard';
+import { Public } from '@core/auth/public.decorator';
 import {
   REFRESH_TOKEN_COOKIE,
   SessionCookiesService,
@@ -65,7 +65,8 @@ const EmailLimit = (limit: number, ttlMs: number) =>
 })
 @Controller('auth')
 // Registration and confirmation are how a caller *gets* a token, so they
-// cannot require one. The global JwtAuthGuard is opt-out for exactly this.
+// cannot require one. The global AuthenticationGuard is opt-out for exactly
+// this.
 @Public()
 @UseGuards(EmailRateLimitGuard)
 export class AuthController {

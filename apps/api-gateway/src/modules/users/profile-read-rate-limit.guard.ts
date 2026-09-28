@@ -10,7 +10,7 @@ import { ThrottlerStorage } from '@nestjs/throttler';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { AppError } from '@core/errors/app-error';
-import type { AuthenticatedRequest } from '../auth/jwt-auth.guard';
+import type { AuthenticatedRequest } from '../auth/request-user';
 
 export interface ProfileReadRateLimit {
   limit: number;

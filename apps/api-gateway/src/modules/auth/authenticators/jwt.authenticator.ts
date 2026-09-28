@@ -1,41 +1,16 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-  Logger,
-  createParamDecorator,
-} from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { FastifyRequest } from 'fastify';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { AccessTokenClaims } from '@contracts/messages/identity.messages';
-import { IS_PUBLIC, Public } from '@core/auth/public.decorator';
 import { AppError } from '@core/errors/app-error';
-import { ACCESS_TOKEN_COOKIE, readCookie } from './session-cookies.service';
-
-export { Public };
-
-export interface RequestUser {
-  id: string;
-  roles: string[];
-  tokenId: string;
-}
-
-/** Injects the authenticated caller, or `undefined` on a `@Public()` route. */
-export const CurrentUser = createParamDecorator(
-  (_data: unknown, context: ExecutionContext): RequestUser | undefined =>
-    context.switchToHttp().getRequest<AuthenticatedRequest>().user,
-);
-
-export interface AuthenticatedRequest extends FastifyRequest {
-  user?: RequestUser;
-}
+import type { Authenticator } from '../authenticator';
+import type { RequestUser } from '../request-user';
+import { ACCESS_TOKEN_COOKIE, readCookie } from '../session-cookies.service';
 
 /**
- * Verifies the access token and attaches the caller to the request —
- * docs/AUTHORIZATION.md §3.
+ * The access token identity issues — docs/AUTHORIZATION.md §3.
  *
  * Verification is local: the token is signed with a secret both services hold,
  * so proving it is genuine needs no call to identity. That is the whole reason
@@ -46,40 +21,22 @@ export interface AuthenticatedRequest extends FastifyRequest {
  * request and make the token's self-contained claims pointless; it happens at
  * refresh instead, at most one access-token lifetime away — see
  * docs/AUTHORIZATION.md §4 for that trade in full.
+ *
+ * This and identity's `JwtTokenIssuer` are the only two places that know the
+ * access token is a JWT.
  */
 @Injectable()
-export class JwtAuthGuard implements CanActivate {
-  private readonly logger = new Logger(JwtAuthGuard.name);
+export class JwtAuthenticator implements Authenticator {
+  private readonly logger = new Logger(JwtAuthenticator.name);
 
-  constructor(
-    private readonly jwt: JwtService,
-    private readonly reflector: Reflector,
-  ) {}
+  constructor(private readonly jwt: JwtService) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (context.getType() !== 'http') {
-      return true;
-    }
-
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-
-    if (isPublic) {
-      return true;
-    }
-
-    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-
+  async authenticate(request: FastifyRequest): Promise<RequestUser | null> {
     const token = accessToken(request);
 
+    // Nothing of ours on the request: not a refusal, just not our business.
     if (!token) {
-      throw new AppError(
-        ERROR_CODES.UNAUTHENTICATED,
-        'Authentication is required',
-        401,
-      );
+      return null;
     }
 
     let claims: AccessTokenClaims;
@@ -106,13 +63,11 @@ export class JwtAuthGuard implements CanActivate {
       );
     }
 
-    request.user = {
+    return {
       id: claims.sub,
       roles: Array.isArray(claims.roles) ? claims.roles : [],
       tokenId: claims.jti,
     };
-
-    return true;
   }
 }
 

@@ -1,21 +1,18 @@
 import { randomUUID } from 'node:crypto';
 
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import compression from '@fastify/compress';
-import fastifyCookie from '@fastify/cookie';
 import { Logger } from 'nestjs-pino';
 
 import { ConfigService } from '@core/config/config.service';
-import { HttpAppExceptionFilter } from '@core/errors/http-exception.filter';
 import { EXCHANGES, QUEUES } from '@contracts/messaging/topology';
 import { AppModule } from './app.module';
 import { GatewayConfig } from './config/gateway.config';
+import { configureHttpApp } from './http-app';
 import { setupOpenApi } from './openapi';
 
 /**
@@ -31,39 +28,9 @@ async function bootstrap() {
 
   app.useLogger(app.get(Logger));
 
-  await app.register(compression);
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      // 400 instead of silently dropping, so a client learns about its typo.
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: false },
-    }),
-  );
-
-  // One envelope for every failure, so a client branches on `code` rather
-  // than on prose or on a bare status.
-  app.useGlobalFilters(new HttpAppExceptionFilter());
+  await configureHttpApp(app);
 
   const configService = app.get<ConfigService<GatewayConfig>>(ConfigService);
-
-  app.enableCors({
-    origin: configService
-      .get('CORS_ORIGINS')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean),
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true,
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
-  });
-
-  await app.register(fastifyCookie, {
-    secret: configService.get('COOKIE_SECRET'),
-  });
 
   // Generated from the DTOs, so it cannot drift from the code. Served outside
   // production: an OpenAPI document is a map of the attack surface, and the

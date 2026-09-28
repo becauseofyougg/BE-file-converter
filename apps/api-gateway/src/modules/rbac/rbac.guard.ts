@@ -14,7 +14,7 @@ import {
 } from '@contracts/messages/rbac.messages';
 import { AppError } from '@core/errors/app-error';
 import { decideAccess } from '@core/rbac/rbac-policy';
-import type { AuthenticatedRequest } from '../auth/jwt-auth.guard';
+import type { AuthenticatedRequest } from '../auth/request-user';
 import { RbacConfigCache } from './rbac-config.cache';
 
 export const REQUIRED_PERMISSIONS = 'REQUIRED_PERMISSIONS';
@@ -34,8 +34,9 @@ export const Permissions = (...permissions: PermissionRef[]) =>
   SetMetadata(REQUIRED_PERMISSIONS, permissions);
 
 /**
- * Decides against the cached config. Runs after `JwtAuthGuard`, so the caller
- * and its roles are already on the request.
+ * Decides against the cached config. Runs after `AuthenticationGuard`, so the
+ * caller and its roles are already on the request — whichever authenticator
+ * put them there.
  */
 @Injectable()
 export class RbacGuard implements CanActivate {
