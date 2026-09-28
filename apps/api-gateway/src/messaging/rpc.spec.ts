@@ -48,6 +48,44 @@ describe('sendRpc', () => {
     expect(error.details).toEqual({ field: 'email' });
   });
 
+  /**
+   * The shape the broker actually delivers — captured from the running stack,
+   * a wrong-password login. Nest 11 nests the `RpcException` payload under
+   * `error`; reading only the top level turned every refusal into a 500.
+   */
+  it('rebuilds an AppError from the envelope Nest delivers over RMQ', async () => {
+    const client = clientReturning(
+      throwError(() => ({
+        error: {
+          code: ERROR_CODES.INVALID_CREDENTIALS,
+          message: 'Invalid email or password',
+          httpStatus: 401,
+        },
+        message: 'Invalid email or password',
+      })),
+    );
+
+    const error = (await sendRpc(client, 'p', {}).catch(
+      (caught: unknown) => caught,
+    )) as AppError;
+
+    expect(error).toBeInstanceOf(AppError);
+    expect(error.code).toBe(ERROR_CODES.INVALID_CREDENTIALS);
+    expect(error.httpStatus).toBe(401);
+  });
+
+  it('does not mistake an envelope around something else for a refusal', async () => {
+    const client = clientReturning(
+      throwError(() => ({ error: 'There is no matching message handler' })),
+    );
+
+    const error = await sendRpc(client, 'p', {}).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).not.toBeInstanceOf(AppError);
+  });
+
   it('answers 504 when the service does not reply in time', async () => {
     const client = clientReturning(
       timer(50).pipe(mergeMap(() => of('too late'))),

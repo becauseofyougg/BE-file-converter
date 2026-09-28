@@ -38,10 +38,13 @@ type ConsumerChannel = Channel & { waitForConfirms?: () => Promise<void> };
  */
 const declared = new WeakMap<Channel, Set<string>>();
 
-/** How many times this message has already been through the ladder. */
-export function retryCount(
-  message: Pick<ConsumeMessage, 'properties'>,
-): number {
+/**
+ * How many times this message has already been through the ladder. Asks for
+ * the headers alone, so a caller need not build a whole AMQP message to ask.
+ */
+export function retryCount(message: {
+  properties?: { headers?: Record<string, unknown> };
+}): number {
   const value: unknown = message.properties?.headers?.[RETRY_COUNT_HEADER];
   const count = typeof value === 'number' ? value : Number(value);
 

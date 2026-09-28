@@ -9,6 +9,7 @@ import request from 'supertest';
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { AppModule } from '../src/app.module';
 import { configureHttpApp } from '../src/http-app';
+import { setupOpenApi } from '../src/openapi';
 
 describe('api-gateway (e2e)', () => {
   let app: NestFastifyApplication;
@@ -24,6 +25,8 @@ describe('api-gateway (e2e)', () => {
       new FastifyAdapter(),
     );
     await configureHttpApp(app);
+    // As main.ts does outside production.
+    setupOpenApi(app);
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
   });
@@ -32,12 +35,43 @@ describe('api-gateway (e2e)', () => {
     await app.close();
   });
 
-  it('GET /health reports the service as up', async () => {
-    const response = await request(app.getHttpServer())
-      .get('/health')
-      .expect(200);
+  /**
+   * Readiness, so it depends on what is running: no broker or storage in a
+   * plain test run means 503, a local stack means 200. What must hold either
+   * way is that both probes ran — this test used to expect a bare `ok`, which
+   * was only true because the probes were never wired in at all.
+   */
+  it('GET /health reports on the broker and the bucket', async () => {
+    const response = await request(app.getHttpServer()).get('/health');
 
-    expect((response.body as { status: string }).status).toBe('ok');
+    expect([200, 503]).toContain(response.status);
+    expect(
+      Object.keys((response.body as { details: object }).details).sort(),
+    ).toEqual(['rabbitmq', 'storage']);
+  }, 15_000);
+
+  /**
+   * Served, not just generated. Swagger UI under Fastify needs
+   * `@fastify/static`, which was not a dependency — the gateway crashed at boot
+   * whenever this ran, and a unit test that only builds the document could
+   * not see it.
+   */
+  describe('OpenAPI', () => {
+    it('serves the document', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/docs/json')
+        .expect(200);
+
+      expect((response.body as { openapi?: string }).openapi).toMatch(/^3\./);
+    });
+
+    it('serves the UI', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/docs')
+        .expect(200);
+
+      expect(response.text).toContain('swagger-ui');
+    });
   });
 
   /**

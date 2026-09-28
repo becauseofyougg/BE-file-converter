@@ -10,6 +10,42 @@ cross-cutting requirements in [docs/NON-FUNCTIONAL-REQUIREMENTS.md](docs/NON-FUN
 The gateway publishes an OpenAPI document at **`/docs`** (raw JSON at `/docs/json`), generated from the
 same DTOs that validate requests, so the two cannot drift apart. It is served outside production only.
 
+## Status — what this stage covers
+
+| Area | State | Spec |
+|---|---|---|
+| Registration, email verification, login (optional emailed confirmation), lockout | done | [REGISTRATION](docs/REGISTRATION.md), [AUTHENTICATION](docs/AUTHENTICATION.md) |
+| Sessions: access + refresh JWT in httpOnly cookies, rotation, logout | done | [AUTHORIZATION](docs/AUTHORIZATION.md) |
+| RBAC: roles, permissions, grants — editable at runtime, no restart | done | [RBAC](docs/RBAC.md) |
+| Users: read / update profile, email change, erasure, admin directory | done | [USER-PROFILE](docs/USER-PROFILE.md), [PROFILE-UPDATE](docs/PROFILE-UPDATE.md), [ACCOUNT-DELETION](docs/ACCOUNT-DELETION.md), [USER-LIST](docs/USER-LIST.md) |
+| Email: eight mails, send log, retry ladder | done | [NOTIFICATIONS](docs/NOTIFICATIONS.md) |
+| Health, rate limiting, validation, CORS, logging, OpenAPI, ≥ 80 % coverage | done | [NFR](docs/NON-FUNCTIONAL-REQUIREMENTS.md) |
+| **File conversion** — upload, queue, workers, download | **not in this stage** | [ARCHITECTURE §5](docs/ARCHITECTURE.md) |
+| Password reset, in-app notifications / SSE | not started | |
+
+`conversion-service` and the gateway's `conversions` / `formats` modules are empty scaffolding:
+they boot, report healthy and do nothing. Each spec ends with a **Still open** section listing what
+is deliberately left for later.
+
+### Trying it
+
+```bash
+cp .env.example .env
+docker compose up -d --build          # POSTGRES_PORT=5433 if a local Postgres holds 5432
+```
+
+1. `POST /auth/register` at <http://localhost:3000/docs> — the answer carries a `challengeId`.
+2. The 6-digit code is in Mailhog at <http://localhost:8025>; send it to `POST /auth/verify-email`.
+   Swagger keeps the session cookies, so the protected routes work from there on.
+3. There is no seeded administrator. To try the admin routes, promote an account and refresh:
+
+   ```bash
+   docker exec fc-postgres psql -U postgres -d identity -c \
+     "INSERT INTO user_roles (user_id, role_id) SELECT '<userId>', id FROM roles WHERE name = 'ADMIN'"
+   ```
+
+   then `POST /auth/refresh` — roles are read at refresh, so the new one applies from there.
+
 ## Services
 
 | Service | Port | Responsibility | Owns |

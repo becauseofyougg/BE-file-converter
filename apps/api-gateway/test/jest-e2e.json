@@ -5,8 +5,13 @@
   "testRegex": "apps/api-gateway/test/.*\\.e2e-spec\\.ts$",
   "setupFiles": ["<rootDir>/apps/api-gateway/test/setup-env.ts"],
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.ts$": "ts-jest",
+    "^.+\\.js$": [
+      "ts-jest",
+      { "tsconfig": { "allowJs": true, "module": "commonjs", "target": "es2022" } }
+    ]
   },
+  "transformIgnorePatterns": ["/node_modules/(?!content-disposition/)"],
   "moduleNameMapper": {
     "^@core$": "<rootDir>/libs/core/src",
     "^@core/(.*)$": "<rootDir>/libs/core/src/$1",

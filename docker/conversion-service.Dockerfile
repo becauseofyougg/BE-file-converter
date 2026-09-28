@@ -48,4 +48,7 @@ EXPOSE 3002
 
 # See the note in identity-service.Dockerfile: fine for the local stack, but
 # production should migrate as a deploy step rather than per container.
-CMD ["sh", "-c", "npx prisma migrate deploy --schema apps/conversion-service/prisma/schema.prisma && node dist/apps/conversion-service/src/main"]
+# The Prisma CLI reads CONVERSION_DATABASE_URL (the schema's own variable, so the
+# three schemas can share one .env on a host); the container is given only
+# DATABASE_URL, so the one is handed to the other here.
+CMD ["sh", "-c", "CONVERSION_DATABASE_URL=\"$DATABASE_URL\" npx prisma migrate deploy --schema apps/conversion-service/prisma/schema.prisma && node dist/apps/conversion-service/src/main"]

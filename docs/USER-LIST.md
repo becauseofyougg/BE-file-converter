@@ -179,10 +179,10 @@ address, and a search log is a strange place to accumulate those.
 
 ## 9. Still open
 
-1. **Nothing has been run.** Docker is unavailable in the development environment used so far, so
-   the query, the cursor walk and the migration — including the `pg_trgm` extension and the
-   trigram index — are covered by unit tests and by reading, not by a live Postgres. The index
-   definitions in particular are the kind of thing only a real `EXPLAIN` confirms.
+1. **Verified on the running compose stack** (2026-09-28), through the gateway: `GET /admin/users`
+   refused for a plain user and paginated for an administrator, and the migration — `pg_trgm`
+   included — applied by the container at boot. The indexes have not been checked with
+   `EXPLAIN ANALYZE` on a seeded table; an empty one says nothing about the plan.
 2. **No role holds `users@list` except ADMIN.** A `SUPPORT` role that can look accounts up without
    being able to enumerate them is exactly what §3 makes possible, and creating one needs no
    deploy — `/admin/rbac/*` is there for it.

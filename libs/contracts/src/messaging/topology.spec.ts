@@ -39,8 +39,8 @@ describe('broker topology', () => {
   });
 
   it('routes a command by its family', () => {
-    expect(ROUTING_KEYS.convert(FormatFamily.AUDIO)).toBe(
-      `convert.${FormatFamily.AUDIO}`,
+    expect(ROUTING_KEYS.convert(FormatFamily.AV)).toBe(
+      `convert.${FormatFamily.AV}`,
     );
   });
 

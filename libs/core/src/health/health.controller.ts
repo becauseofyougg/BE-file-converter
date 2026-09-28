@@ -1,4 +1,10 @@
-import { Controller, Get } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpStatus,
+  Res,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { HealthCheck } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -7,6 +13,11 @@ import { Public } from '../auth/public.decorator';
 import { HealthService } from './health.service';
 import { ConfigService } from '../config/config.service';
 import { BaseConfig } from '../config/config.types';
+
+/** All the controller needs of the reply — Fastify's and Express's both fit. */
+interface StatusReply {
+  status(code: number): unknown;
+}
 
 @ApiTags('health')
 @Controller('health')
@@ -34,7 +45,7 @@ export class HealthController {
   })
   @Get()
   @HealthCheck()
-  async check() {
+  async check(@Res({ passthrough: true }) reply: StatusReply) {
     const healthCheckEnabled = this.configService.getBoolean(
       'HEALTH_CHECK_ENABLED',
     );
@@ -43,6 +54,20 @@ export class HealthController {
       return this.healthService.getEmptyResponse();
     }
 
-    return this.healthService.checkHealth();
+    try {
+      return await this.healthService.checkHealth();
+    } catch (error) {
+      // Terminus reports "down" by throwing a 503 whose body names each
+      // failing dependency. Left to propagate, the global exception filter
+      // re-wraps it as `INTERNAL_ERROR` and the names are lost — which is the
+      // one thing an operator opens `/health` to read. So it is answered here.
+      if (error instanceof ServiceUnavailableException) {
+        reply.status(HttpStatus.SERVICE_UNAVAILABLE);
+
+        return error.getResponse();
+      }
+
+      throw error;
+    }
   }
 }

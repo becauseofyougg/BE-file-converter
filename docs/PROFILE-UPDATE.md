@@ -186,12 +186,12 @@ change all lean on the same rules, and they now lean on the same module.
 
 ## 8. Still open
 
-1. **Nothing has been run.** Docker is unavailable in the development environment used so far, so all
-   three endpoints, the migration and the mail are covered by unit tests and by reading — not by a
-   live Postgres and RabbitMQ.
-2. `notification-service` renders neither `user.email_change_requested` nor `user.email_changed`.
-   Identity publishes both; nothing consumes them, so **no mail is sent and no code arrives**. This is
-   the one gap that stops the flow working end to end today.
+1. **Verified on the running compose stack** (2026-09-28), through the gateway: a Self changes its own name,
+   is refused its own email with 403, and moves its address through the code sent to the new one
+   — with the old one told. The Self PATCH was broken there and nowhere else: the patch arrives as
+   a class-transformed DTO whose absent fields are own properties set to `undefined`, so every
+   request looked as if it named `email`. Fixed, with a test built from the real DTO.
+2. Both mails are sent by `notification-service` ([NOTIFICATIONS.md](NOTIFICATIONS.md)).
 3. Uploading a photo is still not built, so `photo` remains unwritable and always null.
 4. Changing an address does not end existing sessions. It cannot: refresh tokens are not stored, so
    there is nothing to revoke ([AUTHORIZATION.md §5](AUTHORIZATION.md)). An attacker who changed the

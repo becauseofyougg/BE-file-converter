@@ -139,10 +139,10 @@ describe('identity RbacController', () => {
       ['deleteGrant', () => grants.remove],
     ])('%s removes by id', async (method, mockFor) => {
       await (
-        controller[method as 'deleteRole'] as (
+        controller[method as 'deleteRole'] as unknown as (
           dto: object,
           context: RmqContext,
-        ) => Promise<void>
+        ) => Promise<unknown>
       )({ id: 'entity-1', ...ACTOR }, context);
 
       expect(mockFor()).toHaveBeenCalledWith(

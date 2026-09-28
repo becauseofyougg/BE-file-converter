@@ -45,6 +45,11 @@ async function bootstrap() {
   // The queue is per replica and non-durable — every gateway must receive the
   // notification, not one of them, and a message that arrived while a replica
   // was down is worthless to it, since it reloads the whole config at boot.
+  //
+  // Exclusive, which is what "lives exactly as long as this replica's
+  // connection" is called in AMQP. RabbitMQ 4 refuses a transient queue that is
+  // *not* exclusive (`transient_nonexcl_queues`), and closing the connection
+  // over it crashed the gateway at boot.
   app.connectMicroservice<MicroserviceOptions>(
     {
       transport: Transport.RMQ,
@@ -54,7 +59,7 @@ async function bootstrap() {
         exchangeType: 'topic',
         wildcards: true,
         queue: `${QUEUES.GATEWAY_EVENTS}.${process.env.HOSTNAME ?? randomUUID()}`,
-        queueOptions: { durable: false, autoDelete: true, exclusive: false },
+        queueOptions: { durable: false, autoDelete: true, exclusive: true },
         noAck: false,
       },
     },

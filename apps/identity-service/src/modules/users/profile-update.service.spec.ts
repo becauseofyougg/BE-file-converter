@@ -20,7 +20,10 @@ import { DOMAIN_EVENTS } from '@contracts/events/domain.events';
 import { AppError } from '@core/errors/app-error';
 import { OutboxService } from '../outbox/outbox.service';
 import { RbacConfigService } from '../rbac/rbac-config.service';
-import { ProfileUpdateService } from './profile-update.service';
+import { plainToInstance } from 'class-transformer';
+
+import { UpdateUserProfileMessageDto } from './dto/update-profile.dto';
+import { ProfileUpdateService, sentFields } from './profile-update.service';
 import { ProfileService } from './profile.service';
 import { UsersService, type User } from './users.service';
 
@@ -144,6 +147,54 @@ describe('ProfileUpdateService', () => {
       expect(error.httpStatus).toBe(403);
       expect(error.message).toContain('email-change');
       expect(users.update).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The patch as it really arrives: through the RPC ValidationPipe, as a
+     * class-transformed DTO. With `target: ES2023` every declared field is an
+     * own property set to `undefined`, so a name-only change *looks* like it
+     * also names `email`. Counting keys refused every Self PATCH on the running
+     * stack; a plain object literal in a test could never show it.
+     */
+    it('is not tripped by the absent fields of a transformed DTO', async () => {
+      const { patch } = plainToInstance(UpdateUserProfileMessageDto, {
+        targetUserId: VIEWER,
+        viewerUserId: VIEWER,
+        viewerRoles: ['USER'],
+        patch: { displayName: 'New Name' },
+      });
+
+      expect(Object.keys(patch)).toContain('email');
+
+      await patchSelf(patch as unknown as Record<string, unknown>);
+
+      expect(users.update).toHaveBeenCalledWith(
+        VIEWER,
+        expect.objectContaining({ displayName: 'New Name' }),
+      );
+    });
+
+    it('still refuses an email that was actually sent in a transformed DTO', async () => {
+      const { patch } = plainToInstance(UpdateUserProfileMessageDto, {
+        targetUserId: VIEWER,
+        viewerUserId: VIEWER,
+        viewerRoles: ['USER'],
+        patch: { email: 'new@example.com' },
+      });
+
+      await expect(
+        patchSelf(patch as unknown as Record<string, unknown>),
+      ).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.FIELD_NOT_WRITABLE }),
+      );
+    });
+  });
+
+  describe('sentFields', () => {
+    it('counts what was sent, including null — the way to clear a field', () => {
+      expect(
+        sentFields({ displayName: null, email: undefined } as never),
+      ).toEqual(['displayName']);
     });
   });
 

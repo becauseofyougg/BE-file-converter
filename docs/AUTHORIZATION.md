@@ -197,10 +197,10 @@ redaction list covers `req.headers.cookie`, `set-cookie`, `*.accessToken` and
 
 ## 8. Still open
 
-1. **Nothing has been run against a live stack.** Docker is not available in the
-   development environment used so far, so the cookie round trip, the rotation and
-   the `drop_refresh_tokens` migration are covered by unit tests and by reading —
-   not by a browser and a Postgres.
+1. **Verified on the running compose stack** (2026-09-28), through the gateway: both cookies set on
+   confirmation, refresh rotating the pair and picking up a role granted since, logout clearing
+   them, and a malformed refresh cookie answered with 401. By `curl` with a cookie jar, not by a
+   browser, so `SameSite` behaviour across origins is still unexercised.
 2. No account-status column exists yet (`blocked`, `suspended`). §4 checks existence
    and a confirmed address, which is everything the schema currently knows. A status
    column is a one-line addition there when one is added.

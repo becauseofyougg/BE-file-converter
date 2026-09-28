@@ -230,12 +230,11 @@ the code; a test asserts it.
 
 ## 10. Still open
 
-1. **Not run against the real stack.** Docker is unavailable in the environment used so far. The
-   mailer and templates have been exercised through Nest DI over a real SMTP conversation with an
-   in-process server — all seven mails delivered as multipart, the User-Agent escaped, a `550`
-   classified as permanent with the address masked — but not against Postgres, RabbitMQ or Mailhog.
-   The retry queues in particular (quorum queues with `x-message-ttl`, which needs RabbitMQ ≥ 3.10;
-   compose runs 4) have only been tested against a mocked channel.
+1. **Verified on the running compose stack** (2026-09-28), through the gateway: verification, email-change
+   (code to the new address, notice to the old), deletion and farewell mails all delivered to
+   Mailhog, and the send log row written as `SENT`. What has **not** run live is a failure: no
+   SMTP outage has been staged, so the retry ladder (quorum queues with `x-message-ttl`) is
+   covered only against a mocked channel.
 2. **`APP_PUBLIC_URL` defaults to the gateway** (`http://localhost:3000`) in both
    `docker-compose.yml` and `.env.example`. Links built against it open an API route with no `GET`
    handler. It should be the frontend's origin, and the four pages in §6 have to exist there.

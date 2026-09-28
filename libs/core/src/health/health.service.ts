@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   HealthCheckService,
   HealthIndicatorService,
@@ -27,9 +27,10 @@ export class HealthService {
   constructor(
     private readonly healthCheckService: HealthCheckService,
     private readonly indicator: HealthIndicatorService,
-    @Optional()
+    // Required, not optional: a missing registration must fail the boot, not
+    // quietly turn readiness into "the process is running".
     @Inject(HEALTH_PROBES)
-    private readonly probes: HealthProbe[] = [],
+    private readonly probes: HealthProbe[],
   ) {}
 
   getEmptyResponse(): HealthCheckResult {
