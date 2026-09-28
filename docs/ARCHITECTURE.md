@@ -251,8 +251,10 @@ There is deliberately **no** `refresh_tokens` table: refresh state may not be st
 attempts, started_at, finished_at, expires_at, created_at, updated_at) · `job_events` (id, job_id,
 status, payload `jsonb`, created_at) · `outbox`.
 
-**notification DB** — `notifications` (id, user_id, type, channel, status, payload `jsonb`, attempts,
-sent_at, error) — an idempotency key on (user_id, type, ref_id) stops duplicate mail on redelivery.
+**notification DB** — `notifications` (id, ref_id, user_id, type, channel, status, attempts,
+last_error, correlation_id, sent_at) — `UNIQUE (ref_id, channel)`, keyed on the event id, stops
+duplicate mail on redelivery. No payload column: the address and the code are rendered straight into
+the mail and never stored ([NOTIFICATIONS.md §4](NOTIFICATIONS.md#4-idempotency)).
 
 Indexes that matter: `conversion_jobs (user_id, created_at DESC)` for the list endpoint,
 `(status, expires_at)` for the cleanup job, `(status)` partial on non-terminal for queue-depth metrics.

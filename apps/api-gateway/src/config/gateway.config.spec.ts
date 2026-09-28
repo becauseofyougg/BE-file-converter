@@ -149,6 +149,18 @@ describe('notificationConfigSchema', () => {
   it('needs somewhere to send mail from', () => {
     expect(validate({ SMTP_FROM: undefined }).error).toBeDefined();
     expect(validate({ SMTP_HOST: undefined }).error).toBeDefined();
+    expect(validate({ SMTP_FROM: 'not-an-address' }).error).toBeDefined();
+  });
+
+  /**
+   * The sender docker-compose.yml and .env.example ship with. `.local` is not
+   * an IANA TLD, and a TLD check refused it — so the service did not boot on
+   * its own defaults.
+   */
+  it('accepts the local-only sender the compose stack uses', () => {
+    expect(
+      validate({ SMTP_FROM: 'no-reply@file-converter.local' }).error,
+    ).toBeUndefined();
   });
 
   /** Confirmation links are rendered against it; a wrong one sends users nowhere. */

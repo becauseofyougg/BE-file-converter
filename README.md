@@ -181,6 +181,13 @@ Two interaction styles, deliberately kept distinct — the names live in `libs/c
 
 Consumers run with manual ack and `prefetchCount=1`, on durable quorum queues.
 
+A consumer that has to try again later does not sleep: it parks the message on a **retry ladder** —
+TTL queues that dead-letter back to the work queue — and acks the original
+([`rmq-retry.ts`](libs/core/src/messaging/rmq-retry.ts)). The notification service is the first user:
+eight `user.*` events become mail, with a send log for idempotency, a four-step ladder for SMTP
+failures, and codes that expire in transit dropped rather than sent
+([docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md)).
+
 ## Libraries
 
 | Purpose | Library |

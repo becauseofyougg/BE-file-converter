@@ -42,7 +42,8 @@ The ones the API in §8 of the architecture actually demands:
 | `users` | `(created_at, id)`, `(last_login_at, id)` | admin list — the `id` tie-break is what makes the cursor walk stable |
 | `users` | GIN trigram on `display_name` | admin search — `ILIKE '%…%'` cannot use a btree |
 | `verification_tokens` | `(user_id, type)`, `(token_hash)` | quoting a challenge back; magic-link lookup |
-| `notifications` | `UNIQUE (user_id, type, ref_id)` | idempotency on message redelivery |
+| `notifications` | `UNIQUE (ref_id, channel)` | idempotency on message redelivery — `ref_id` is the event id |
+| `notifications` | `(user_id, created_at)` | "what have we sent this user" — support, and the in-app list to come |
 | `outbox` | partial on `(sent_at IS NULL)` | relay polling only unsent rows |
 
 Indexes are created **in migrations**, never by `prisma db push` — which exists for prototyping and

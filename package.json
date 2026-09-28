@@ -76,6 +76,7 @@
     "joi": "^18.0.2",
     "nestjs-cls": "^6.3.1",
     "nestjs-pino": "^5.2.0",
+    "nodemailer": "^10.0.12",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "prisma": "^6.19.3",
