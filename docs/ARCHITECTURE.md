@@ -146,7 +146,9 @@ not block a 200 ms thumbnail resize, and the image worker's container does not s
 - **Transactional outbox** in every publishing service: the job row and the outbox row are written in
   one `@Transactional()` (via `@nestjs-cls/transactional`), and a relay publishes and
   marks them sent. Without this you eventually get a job in the DB that no worker ever hears about, or
-  an event for a rollback that never happened.
+  an event for a rollback that never happened. Marking a row sent also **empties its payload** — an
+  event can carry a one-time code or the address of an account being erased, and neither may outlive
+  its delivery — and a daily job removes finished rows after a week.
 - `correlationId` travels in message headers and is logged by every service.
 
 ---
@@ -336,7 +338,9 @@ Worth a minute of discussion; either is defensible.
   worker saturation. Queue depth is the autoscaling signal.
 - Graceful shutdown: `enableShutdownHooks`, stop consuming, finish the in-flight job, then exit — so a
   deploy never kills a running conversion.
-- CI: lint + unit + e2e + `docker build` per app on every PR.
+- CI ([ci.yml](../.github/workflows/ci.yml)), on every push and PR: lint, type-check, unit tests
+  with the coverage gate, e2e, build and a production dependency audit; then the whole compose stack
+  is started and [scripts/smoke.sh](../scripts/smoke.sh) drives the real flows through it.
 
 **Testing:** unit tests per converter with real fixture files (a converter is a pure function of bytes →
 bytes, so these are cheap and high value); integration tests per service against Testcontainers

@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, types, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      # 22, not the latest: it is what the Dockerfiles run in production.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # `postinstall` generates the three Prisma clients.
+      - run: npm ci
+
+      # `lint:check`, not `lint`: the latter runs `--fix`, and would pass by
+      # quietly rewriting the code it was meant to judge.
+      - run: npm run lint:check
+
+      # Jest transpiles without type-checking, so a type error in a spec file
+      # would otherwise never fail anything.
+      - run: npm run typecheck
+
+      # Fails below the 80 % coverage threshold in package.json.
+      - run: npm run test:cov
+
+      - run: npm run test:e2e
+
+      - run: npm run build
+
+      - name: No known high-severity vulnerabilities in what ships
+        run: npm audit --omit=dev --audit-level=high
+
+  stack:
+    name: Docker stack, end to end
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # The documented way to run the project, exactly: every failure the unit
+      # and e2e tests cannot see — images, migrations, env, the broker — lives
+      # between these containers.
+      - name: Start the stack
+        run: docker compose up -d --build
+
+      - name: Wait until the gateway is ready
+        # /health answers 200 only once the broker and the bucket are both up.
+        run: |
+          for attempt in $(seq 1 60); do
+            curl -fs http://localhost:3000/health > /dev/null && exit 0
+            sleep 5
+          done
+          echo "the gateway never became ready"
+          exit 1
+
+      - name: Smoke test
+        run: npm run smoke
+
+      - name: Container logs
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

@@ -4,7 +4,7 @@ import { of, throwError } from 'rxjs';
 import { DOMAIN_EVENTS } from '@contracts/events/domain.events';
 
 import type { PrismaService } from '../../database/prisma.service';
-import { OutboxRelay } from './outbox.relay';
+import { CLEARED_PAYLOAD, OutboxRelay } from './outbox.relay';
 
 interface Claimed {
   id: string;
@@ -77,15 +77,36 @@ describe('OutboxRelay', () => {
     );
   });
 
-  it('marks a published row so it is not claimed again', async () => {
+  /**
+   * Marked and emptied in the same statement: the payload carries the code or
+   * the address, and a row that kept it after publishing would be a second,
+   * unhashed copy of every one-time code identity ever issued.
+   */
+  it('marks a published row, and empties it, so it is neither claimed nor kept', async () => {
+    queueBatches([
+      buildMessage({
+        payload: { email: 'jane@example.com', secret: '123456' },
+      }),
+    ]);
+
+    await relay.drain();
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'event-1' },
+      data: { publishedAt: expect.any(Date), payload: CLEARED_PAYLOAD },
+    });
+    expect(CLEARED_PAYLOAD).toEqual({});
+  });
+
+  /** The broker still needs it: a failed emit is retried from the row. */
+  it('keeps the payload of a row the broker refused', async () => {
+    emit.mockReturnValue(throwError(() => new Error('channel closed')));
     queueBatches([buildMessage()]);
 
     await relay.drain();
 
-    expect(update).toHaveBeenCalledWith({
-      where: { id: 'event-1' },
-      data: { publishedAt: expect.any(Date) },
-    });
+    expect(update.mock.calls[0][0].data).not.toHaveProperty('payload');
   });
 
   /**

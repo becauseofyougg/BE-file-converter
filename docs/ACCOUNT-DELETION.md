@@ -198,8 +198,10 @@ data whose destruction it is recording would be a strange thing to build.
    and the farewell ([NOTIFICATIONS.md](NOTIFICATIONS.md)), but no service removes the photo from
    object storage or purges the user's conversion jobs. Today that leaves nothing behind in
    practice — no uploader exists, so `photo_key` is always null — but it is the gap that matters
-   before this is a real GDPR answer. The identity outbox also keeps the address from this event
-   after it is published; see [NOTIFICATIONS.md §10](NOTIFICATIONS.md#10-still-open).
+   before this is a real GDPR answer. The address in this event does not outlive its delivery in
+   the identity outbox: the relay empties the payload as it publishes. Only an event the broker
+   refused outright keeps it, for the week an operator has to replay it
+   ([NOTIFICATIONS.md §10](NOTIFICATIONS.md#10-still-open)).
 3. The erasure is immediate, with no grace period. A user who deletes by mistake has no recourse,
    and the data is genuinely gone. A `deleted_at` in the future plus a nightly sweep would give a
    30-day window; whether that is wanted is a product decision, and the column is already the
