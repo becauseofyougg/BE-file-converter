@@ -10,7 +10,15 @@ import { OutboxService } from './outbox.service';
 
 const BATCH_SIZE = 50;
 const PUBLISH_TIMEOUT_MS = 5_000;
-const MAX_ATTEMPTS = 10;
+/** Past this the relay stops claiming a row; it is dead, kept for an operator. */
+export const MAX_ATTEMPTS = 10;
+
+/**
+ * What a published row's payload becomes. The payload is the event itself —
+ * one-time codes, link tokens, the address of an account being erased — and
+ * once the broker has confirmed it, nothing here reads it again.
+ */
+export const CLEARED_PAYLOAD: Prisma.InputJsonObject = {};
 
 /** The columns the claim query returns, aliased to the model's field names. */
 interface ClaimedMessage {
@@ -36,7 +44,10 @@ interface ClaimedMessage {
  *
  * Delivery is at-least-once by construction: the broker can accept a message
  * and the process die before the row is marked. Consumers deduplicate — for
- * mail, on `(user_id, type, ref_id)`.
+ * mail, on `(ref_id, channel)`, the event id.
+ *
+ * A published row keeps its metadata but not its payload; `OutboxCleanupJob`
+ * removes the row itself later.
  */
 @Injectable()
 export class OutboxRelay {
@@ -128,9 +139,13 @@ export class OutboxRelay {
           .pipe(timeout(PUBLISH_TIMEOUT_MS)),
       );
 
+      // Marked and emptied in one statement. `verification_tokens` stores only
+      // a hash of each code precisely so the database never holds a usable
+      // one; a payload kept after publishing would undo that, and would keep
+      // the address of an erased account after the erasure it announces.
       await this.prisma.outboxMessage.update({
         where: { id: message.id },
-        data: { publishedAt: new Date() },
+        data: { publishedAt: new Date(), payload: CLEARED_PAYLOAD },
       });
 
       return true;

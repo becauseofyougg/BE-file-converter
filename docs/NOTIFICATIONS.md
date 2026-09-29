@@ -186,7 +186,7 @@ time zone and a relative time is what they need to act on anyway.
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | a pooled transport; connect and greeting time out at 10 s, an idle socket at 30 s — nodemailer's own defaults are two and ten *minutes*, long enough to hold the consumer |
 | `SMTP_USER`, `SMTP_PASSWORD` | optional — Mailhog takes anonymous SMTP, a real provider does not |
 | `SMTP_FROM` | an address. Validated without a TLD check: the compose default `no-reply@file-converter.local` was refused by one, and the service did not boot on its own defaults |
-| `APP_PUBLIC_URL` | the **frontend** origin links are built against — see §10 |
+| `APP_PUBLIC_URL` | the **frontend** origin links are built against — `http://localhost:5174` by default, the first of the gateway's `CORS_ORIGINS`. Never the gateway: the API has no `GET` route for a link to land on |
 
 SMTP is deliberately not a health probe: a provider that is briefly refusing connections should
 send mail up the retry ladder, not take the replica out of rotation.
@@ -235,18 +235,18 @@ the code; a test asserts it.
    Mailhog, and the send log row written as `SENT`. What has **not** run live is a failure: no
    SMTP outage has been staged, so the retry ladder (quorum queues with `x-message-ttl`) is
    covered only against a mocked channel.
-2. **`APP_PUBLIC_URL` defaults to the gateway** (`http://localhost:3000`) in both
-   `docker-compose.yml` and `.env.example`. Links built against it open an API route with no `GET`
-   handler. It should be the frontend's origin, and the four pages in §6 have to exist there.
+2. **The frontend pages are not in this repository.** `APP_PUBLIC_URL` now defaults to the
+   frontend's origin rather than the gateway's, but the four pages in §6 have to exist there for a
+   magic link to work. Codes — the default method — need no page.
 3. **Delivery is at-least-once, not exactly-once.** A crash after the SMTP server accepts a mail but
    before the row is marked `SENT` sends it again on redelivery, and two replicas racing the same
    redelivered `RETRYING` row can both send. Closing that would need a lease on the row; one
    duplicate mail in a crash is the accepted price.
-4. **The identity outbox keeps every code in plaintext.** `verification_tokens` stores only a hash,
-   but the event carrying the code is written to `outbox.payload`, and published rows are never
-   deleted or cleared. The same goes for the address in `user.deleted`, which outlives the erasure it
-   announces. The fix is in identity: clear the payload once published, or prune published rows after
-   a short window.
+4. **Codes sit in the identity outbox until they are relayed** — seconds, normally. The relay empties
+   a row's payload in the same statement that marks it published, a migration emptied the rows
+   published before that, and `OutboxCleanupJob` removes finished rows after a week. A **dead** row
+   (the broker refused it ten times) keeps its payload for that week so an operator can replay it;
+   the codes in it have long expired by then, but an address from `user.deleted` is still there.
 5. **English only.** The wording is in one place so a locale lookup can replace it, but there is no
    locale on the user yet to look up.
 6. The `email_changed` notice tells the reader to "contact support" without saying how: there is no

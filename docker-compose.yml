@@ -215,7 +215,9 @@ services:
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       SMTP_FROM: ${SMTP_FROM:-no-reply@file-converter.local}
-      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
+      # The frontend, not the gateway: a magic link opens a page that posts the
+      # token to the API, and the API has no GET route for it to land on.
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:5174}
     depends_on:
       postgres:
         condition: service_healthy

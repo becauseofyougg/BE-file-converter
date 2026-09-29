@@ -1,5 +1,7 @@
 # File Converter — Backend
 
+[![CI](https://github.com/becauseofyougg/BE-file-converter/actions/workflows/ci.yml/badge.svg)](https://github.com/becauseofyougg/BE-file-converter/actions/workflows/ci.yml)
+
 NestJS **monorepo**: four services in one repository, talking over RabbitMQ, with S3-compatible object
 storage holding the bytes. HTTP kernel is **Fastify** (`@nestjs/platform-fastify`), not Express — use
 Fastify plugins and types (`NestFastifyApplication`, `app.register(...)`).
@@ -45,6 +47,9 @@ docker compose up -d --build          # POSTGRES_PORT=5433 if a local Postgres h
    ```
 
    then `POST /auth/refresh` — roles are read at refresh, so the new one applies from there.
+
+`npm run smoke` does all of the above and more — email change, erasure, what the outbox keeps —
+against the running stack, and is what CI runs after bringing it up.
 
 ## Services
 
@@ -111,10 +116,24 @@ npm run start:dev:notification-service
 npm run build                  # all four apps
 npm run build:api-gateway      # one app
 npm run lint                   # lint & fix
+npm run lint:check             # lint only — what CI runs
+npm run typecheck              # tsc over everything, specs included; Jest does not type-check
 npm run test                   # unit tests (apps + libs)
-npm run test:cov               # with coverage
-npm run test:e2e               # gateway e2e
+npm run test:cov               # with coverage; fails below 80 %
+npm run test:e2e               # the gateway over real Fastify, no broker needed
+npm run smoke                  # end to end against a running `docker compose` stack
 ```
+
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the checks above, a production
+dependency audit, and then the whole stack with the smoke test on every push and pull request.
+
+**Dependency overrides.** `package.json` pins two transitive packages past what their parents
+ask for, because the parents have no release that does: `fastify` under
+`@nestjs/platform-fastify` (11.2.6, the last 11.x, holds 5.11.3 — two advisories fixed in 5.12.1),
+and `deepmerge-ts` under the Prisma CLI's `@prisma/config` (holds 7.x — a high-severity advisory
+fixed in 8). `fastify` stays within 5.x; `deepmerge-ts` is a major step, checked by running the
+Prisma CLI through it — `generate`, `validate`, `migrate diff` and, in the containers,
+`migrate deploy`. Drop each override once the parent moves past it.
 
 ## Configuration
 

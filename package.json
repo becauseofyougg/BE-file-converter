@@ -24,11 +24,14 @@
     "start:prod:conversion-service": "node dist/apps/conversion-service/apps/conversion-service/src/main",
     "start:prod:notification-service": "node dist/apps/notification-service/apps/notification-service/src/main",
     "lint": "eslint \"{apps,libs}/**/*.ts\" --fix",
+    "lint:check": "eslint \"{apps,libs}/**/*.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./apps/api-gateway/test/jest-e2e.json",
+    "smoke": "bash scripts/smoke.sh",
     "prisma:generate": "npm run prisma:generate:identity && npm run prisma:generate:conversion && npm run prisma:generate:notification",
     "prisma:generate:identity": "prisma generate --schema apps/identity-service/prisma/schema.prisma",
     "prisma:generate:conversion": "prisma generate --schema apps/conversion-service/prisma/schema.prisma",
@@ -153,6 +156,14 @@
         "functions": 80,
         "lines": 80
       }
+    }
+  },
+  "overrides": {
+    "@nestjs/platform-fastify": {
+      "fastify": "^5.12.5"
+    },
+    "@prisma/config": {
+      "deepmerge-ts": "^8.0.2"
     }
   }
 }
