@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import {
   Body,
   Controller,
@@ -24,7 +22,7 @@ import {
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { TokenPair } from '@contracts/messages/identity.messages';
-import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
+import { correlationIdFor } from '@core/messaging/correlation-id';
 import { AppError } from '@core/errors/app-error';
 import { AuthService, type CallerContext } from './auth.service';
 import {
@@ -428,12 +426,17 @@ export class AuthController {
   }
 }
 
-function callerContext(request: FastifyRequest): CallerContext {
+/**
+ * Identity accepts at most this much User-Agent, and the header is the
+ * client's to fill. Forwarded whole, a long one failed identity's validation;
+ * cut, it is still enough to recognise a device in a login mail.
+ */
+export const MAX_USER_AGENT_LENGTH = 255;
+
+export function callerContext(request: FastifyRequest): CallerContext {
   return {
-    correlationId:
-      (request.headers[CORRELATION_ID_HEADER] as string | undefined) ??
-      String(request.id ?? randomUUID()),
-    userAgent: request.headers['user-agent'],
+    correlationId: correlationIdFor(request),
+    userAgent: request.headers['user-agent']?.slice(0, MAX_USER_AGENT_LENGTH),
     ip: request.ip,
   };
 }

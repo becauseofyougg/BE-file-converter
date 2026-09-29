@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 
@@ -57,6 +58,41 @@ describe('RpcAppExceptionFilter', () => {
       httpStatus: 500,
     });
     expect(JSON.stringify(error.getError())).not.toContain('users_email_key');
+  });
+
+  /**
+   * A payload this service's ValidationPipe refused. It used to fall into the
+   * branch above and reach the client as a 500.
+   */
+  it('turns a validation failure into a 400 that names the rule', async () => {
+    const error = (await thrownBy(
+      new BadRequestException([
+        'correlationId must be shorter than or equal to 64 characters',
+      ]),
+    )) as RpcException;
+
+    expect(error.getError()).toEqual({
+      code: ERROR_CODES.VALIDATION_FAILED,
+      message: 'The request failed validation',
+      httpStatus: 400,
+      details: {
+        errors: [
+          'correlationId must be shorter than or equal to 64 characters',
+        ],
+      },
+    });
+    expect(filter['logger'].error).not.toHaveBeenCalled();
+  });
+
+  it('keeps a single-message BadRequestException readable', async () => {
+    const error = (await thrownBy(
+      new BadRequestException('nope'),
+    )) as RpcException;
+
+    expect(error.getError()).toMatchObject({
+      httpStatus: 400,
+      details: { errors: ['nope'] },
+    });
   });
 
   it('logs the unexpected one, so it is not lost', async () => {

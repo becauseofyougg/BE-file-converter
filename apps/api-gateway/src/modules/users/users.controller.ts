@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import {
   Body,
   Controller,
@@ -25,7 +23,7 @@ import type {
   StartEmailChangeResponse,
   UserProfile,
 } from '@contracts/messages/users.messages';
-import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
+import { correlationIdFor } from '@core/messaging/correlation-id';
 import { Public } from '@core/auth/public.decorator';
 import { CurrentUser, type RequestUser } from '../auth/request-user';
 import { SessionCookiesService } from '../auth/session-cookies.service';
@@ -354,8 +352,5 @@ export class UsersController {
 }
 
 function correlationId(request: FastifyRequest): string {
-  return (
-    (request.headers[CORRELATION_ID_HEADER] as string | undefined) ??
-    String(request.id ?? randomUUID())
-  );
+  return correlationIdFor(request);
 }

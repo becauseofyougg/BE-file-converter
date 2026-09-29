@@ -63,6 +63,20 @@ export class JwtAuthenticator implements Authenticator {
       );
     }
 
+    // A genuine signature on a token that names nobody is still no
+    // authentication (docs/AUTHORIZATION.md §1.3.1). Let through, it carried
+    // an undefined user id into every downstream call — which identity's
+    // validation refused as a 500.
+    if (typeof claims.sub !== 'string' || claims.sub === '') {
+      this.logger.warn({ event: 'auth.token.rejected', reason: 'no_subject' });
+
+      throw new AppError(
+        ERROR_CODES.UNAUTHENTICATED,
+        'The access token is invalid',
+        401,
+      );
+    }
+
     return {
       id: claims.sub,
       roles: Array.isArray(claims.roles) ? claims.roles : [],

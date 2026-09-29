@@ -77,7 +77,8 @@ refuses `none` together with `COOKIE_SECURE=false`: a browser silently discards
 that combination, which presents as "nobody can log in" long after the deploy.
 
 **Verifying a request** is local — signature, `exp`, and `sub` present — and costs no
-call to identity. `Authorization: Bearer` still works as a fallback for callers that
+call to identity. A genuinely signed token with no `sub` is a 401 like any other bad
+token; it used to pass and carry an undefined user id downstream. `Authorization: Bearer` still works as a fallback for callers that
 are not browsers (scripts, tests). It weakens nothing: building that header requires
 having read the cookie first, which is exactly what `httpOnly` prevents.
 

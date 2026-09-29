@@ -62,15 +62,21 @@ export class ProfileReadRateLimitGuard implements CanActivate {
       return true;
     }
 
+    // Milliseconds, as throttler v6 takes it — seconds here shrank the window
+    // a thousandfold and left the limit counting nothing.
     const record = await this.storage.increment(
       `profile-read:${viewerId}`,
-      Math.ceil(config.ttlMs / 1000),
+      config.ttlMs,
       config.limit,
-      0,
+      // Blocked for the rest of the window once over the limit. With 0 the
+      // storage lifts the block the instant it sets it and resets the count,
+      // so the request that crossed the line went through and counting began
+      // again: the limit was never enforced, whatever the window.
+      config.ttlMs,
       'profile-read',
     );
 
-    if (record.totalHits > config.limit) {
+    if (record.isBlocked) {
       this.logger.warn({
         event: 'users.profile.rate_limited',
         dimension: 'viewer',
@@ -81,7 +87,7 @@ export class ProfileReadRateLimitGuard implements CanActivate {
         ERROR_CODES.RATE_LIMITED,
         'Too many profile lookups, please try again later',
         429,
-        { retryAfterSeconds: record.timeToExpire },
+        { retryAfterSeconds: record.timeToBlockExpire },
       );
     }
 

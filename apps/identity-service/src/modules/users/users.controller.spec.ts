@@ -23,10 +23,12 @@ describe('identity UsersController', () => {
   let context: RmqContext;
   let controller: UsersController;
 
-  const message = { fields: { deliveryTag: 1 } };
+  // A fresh object per test, as each delivery is: acks are tracked per message.
+  let message: { fields: { deliveryTag: number } };
   const caller = { viewerUserId: VIEWER, viewerRoles: ['USER'] };
 
   beforeEach(() => {
+    message = { fields: { deliveryTag: 1 } };
     profiles = {
       getProfile: jest.fn().mockResolvedValue({ id: TARGET }),
     } as unknown as jest.Mocked<ProfileService>;
@@ -169,13 +171,15 @@ describe('identity UsersController', () => {
       expect(ack).toHaveBeenCalledWith(message);
     });
 
-    it('leaves a crash for the broker to redeliver', async () => {
+    // Acked, not left for a redelivery that never comes: an unacked message
+    // holds the consumer's only prefetch slot and identity stops answering.
+    it('acks a crash too, so one bad message cannot wedge the consumer', async () => {
       profiles.getProfile.mockRejectedValue(new Error('database gone'));
 
       await expect(
         controller.getProfile({ targetUserId: TARGET, ...caller }, context),
       ).rejects.toThrow('database gone');
-      expect(ack).not.toHaveBeenCalled();
+      expect(ack).toHaveBeenCalledWith(message);
     });
   });
 });

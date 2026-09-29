@@ -4,7 +4,11 @@ import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { TokenPair } from '@contracts/messages/identity.messages';
 import { AppError } from '@core/errors/app-error';
 
-import { AuthController } from './auth.controller';
+import {
+  AuthController,
+  callerContext,
+  MAX_USER_AGENT_LENGTH,
+} from './auth.controller';
 import type { AuthService } from './auth.service';
 import { REFRESH_TOKEN_COOKIE } from './session-cookies.service';
 import type { SessionCookiesService } from './session-cookies.service';
@@ -241,6 +245,40 @@ describe('gateway AuthController', () => {
 
       expect(cookies.issue).toHaveBeenCalledWith(asReply(), TOKENS);
       expect(body).toMatchObject({ status: 'verified' });
+    });
+  });
+});
+
+describe('callerContext', () => {
+  const request = (headers: Record<string, string>) =>
+    ({ headers, id: 'req-1', ip: '203.0.113.7' }) as unknown as FastifyRequest;
+
+  /**
+   * Identity accepts 255 characters of User-Agent. Forwarded whole, a longer
+   * one — some real browsers send one — failed its validation.
+   */
+  it('cuts the User-Agent to what identity accepts', () => {
+    const context = callerContext(request({ 'user-agent': 'x'.repeat(400) }));
+
+    expect(context.userAgent).toHaveLength(MAX_USER_AGENT_LENGTH);
+  });
+
+  it('does not carry a correlation id it would not accept', () => {
+    expect(
+      callerContext(request({ 'x-correlation-id': 'y'.repeat(100) }))
+        .correlationId,
+    ).toBe('req-1');
+  });
+
+  it('passes an ordinary caller through untouched', () => {
+    expect(
+      callerContext(
+        request({ 'user-agent': 'Firefox', 'x-correlation-id': 'abc-1' }),
+      ),
+    ).toEqual({
+      correlationId: 'abc-1',
+      userAgent: 'Firefox',
+      ip: '203.0.113.7',
     });
   });
 });

@@ -164,6 +164,20 @@ echo "== what the outbox keeps"
 check "published rows hold no payload" 0 "$(sql identity "SELECT count(*) FROM outbox WHERE published_at IS NOT NULL AND payload <> '{}'::jsonb")"
 check "  the erased address is nowhere in it" 0 "$(sql identity "SELECT count(*) FROM outbox WHERE payload::text LIKE '%$NEW_EMAIL%'")"
 
+echo "== hardening"
+# One request with an over-long x-correlation-id used to fail identity's
+# validation before any handler ran, leave the message unacked, and stop
+# identity answering anyone — surviving restarts, since the broker redelivered
+# the same message. Both halves are checked: the request, and that the next one
+# is still answered.
+LONG_ID=$(printf 'a%.0s' $(seq 1 100))
+check "an over-long x-correlation-id is not a 5xx" yes "$(s=$(curl -s -m 15 -o /dev/null -w '%{http_code}' -H "x-correlation-id: $LONG_ID" -H 'content-type: application/json' --data '{"email":"probe@example.com","password":"a perfectly fine passphrase"}' "$GW/auth/login"); [ "$s" -lt 500 ] && echo yes || echo "no ($s)")"
+check "  identity still answers the next request" yes "$(s=$(curl -s -m 15 -o /dev/null -w '%{http_code}' -H 'content-type: application/json' --data '{"email":"probe2@example.com","password":"a perfectly fine passphrase"}' "$GW/auth/login"); [ "$s" -lt 500 ] && echo yes || echo "no ($s)")"
+check "  nothing left unacknowledged on identity.rpc" 0 "$(docker exec fc-rabbitmq rabbitmqctl list_queues name messages_unacknowledged 2> /dev/null | awk '$1 == "identity.rpc" {print $2}')"
+BRUTE="brute-$(date +%s)@example.com"
+ATTEMPTS=$(for i in $(seq 1 6); do curl -s -o /dev/null -w '%{http_code} ' -H 'content-type: application/json' --data "{\"email\":\"$BRUTE\",\"password\":\"wrong guess number $i\"}" "$GW/auth/login"; done)
+check "the sixth wrong password on one address is throttled" 429 "$(echo "$ATTEMPTS" | awk '{print $6}')"
+
 echo "== docs"
 check "GET /docs (Swagger UI)" 200 "$(curl -s -o /dev/null -w '%{http_code}' "$GW/docs")"
 check "GET /docs/json" 200 "$(curl -s -o /dev/null -w '%{http_code}' "$GW/docs/json")"

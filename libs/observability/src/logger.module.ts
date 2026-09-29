@@ -6,6 +6,7 @@ import { LoggerModule as PinoLoggerModule } from 'nestjs-pino';
 
 import { ConfigService } from '@core/config/config.service';
 import { BaseConfig } from '@core/config/config.types';
+import { acceptCorrelationId } from '@core/messaging/correlation-id';
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
 
 /**
@@ -44,7 +45,8 @@ export function prettyTransport(
           base: { service: config.get('SERVICE_NAME') },
 
           genReqId: (req: IncomingMessage) =>
-            (req.headers?.[CORRELATION_ID_HEADER] as string) ?? randomUUID(),
+            acceptCorrelationId(req.headers?.[CORRELATION_ID_HEADER]) ??
+            randomUUID(),
           customProps: (req: IncomingMessage) => ({
             correlationId: (req as never as { id: string }).id,
           }),

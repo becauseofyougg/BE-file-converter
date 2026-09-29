@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 
 import { ConfigModule } from '@core/config/config.module';
+import { RmqAckInterceptor } from '@core/messaging/rmq-ack';
 import { HealthModule } from '@core/health/health.module';
 import { databaseProbe } from '@core/health/health.probes';
 import { ObservabilityModule } from '@obs/logger.module';
@@ -48,6 +50,12 @@ import { UsersModule } from './modules/users/users.module';
     TokensModule,
     OutboxModule,
     RbacModule,
+  ],
+  providers: [
+    // Every RPC message is acked, whatever became of it — including a payload
+    // the ValidationPipe refused before any handler ran. Without this, one
+    // such message took the only prefetch slot and identity stopped answering.
+    { provide: APP_INTERCEPTOR, useClass: RmqAckInterceptor },
   ],
 })
 export class AppModule {}

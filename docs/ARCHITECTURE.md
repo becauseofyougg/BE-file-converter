@@ -137,6 +137,12 @@ not block a 200 ms thumbnail resize, and the image worker's container does not s
 - `noAck: false`, manual ack, `prefetchCount: 1` on converter workers — a worker takes one job at a
   time, so a crash redelivers exactly one job, and RabbitMQ spreads load by actual capacity rather than
   round-robin.
+- **Every message is settled.** An unacked message is not redelivered while its channel lives — it
+  holds the consumer's prefetch slot and the consumer takes nothing else. Request/response handlers
+  therefore ack whatever happens, including a payload the `ValidationPipe` refused before any
+  handler ran (`RmqAckInterceptor`); the caller has the error and its own timeout. One such message
+  once stopped identity answering anyone, and a restart only redelivered it. Event consumers settle
+  explicitly instead: ack, the retry ladder, or the dead-letter queue.
 - Durable quorum queues, persistent messages, publisher confirms.
 - **Retry with backoff:** on a retryable failure, nack without requeue → dead-letter to
   `conversion.retry.<n>` (a queue with `x-message-ttl` and DLX back to the work queue) → 3 attempts at

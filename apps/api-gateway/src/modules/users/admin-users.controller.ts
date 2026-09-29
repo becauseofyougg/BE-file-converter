@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import {
   ApiCookieAuth,
@@ -19,7 +17,7 @@ import type {
   ListUsersResponse,
   UserListItem,
 } from '@contracts/messages/users.messages';
-import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
+import { correlationIdFor } from '@core/messaging/correlation-id';
 import { AuthenticationGuard } from '../auth/authentication.guard';
 import { CurrentUser, type RequestUser } from '../auth/request-user';
 import { Permissions, RbacGuard } from '../rbac/rbac.guard';
@@ -94,9 +92,7 @@ export class AdminUsersController {
       status: query.status,
       sort: query.sort,
       order: query.order,
-      correlationId:
-        (request.headers[CORRELATION_ID_HEADER] as string | undefined) ??
-        String(request.id ?? randomUUID()),
+      correlationId: correlationIdFor(request),
     });
   }
 }
