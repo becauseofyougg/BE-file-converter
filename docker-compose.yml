@@ -35,15 +35,15 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: postgres
-      # Pinned to where the volume is mounted. Newer 18.x images default to a
-      # versioned subdirectory and refuse to start when data sits at the old
-      # path — which is where every volume this stack has created so far keeps it.
-      PGDATA: /var/lib/postgresql/data
     ports:
       # Override with POSTGRES_PORT when a local Postgres already holds 5432.
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # The parent directory, as the image expects from 18 on: it keeps data in
+      # a versioned subdirectory (`18/docker`) so a later `pg_upgrade --link`
+      # can put the next major beside it. Mounting `.../data` instead, or
+      # pinning PGDATA there, makes it refuse a volume created this way.
+      - postgres_data:/var/lib/postgresql
       - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
