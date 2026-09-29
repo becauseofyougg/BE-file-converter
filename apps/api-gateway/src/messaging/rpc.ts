@@ -2,7 +2,11 @@ import { ClientProxy } from '@nestjs/microservices';
 import { lastValueFrom, timeout, TimeoutError } from 'rxjs';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
-import { AppError, isSerializedAppError } from '@core/errors/app-error';
+import {
+  AppError,
+  isSerializedAppError,
+  type SerializedAppError,
+} from '@core/errors/app-error';
 
 /** A caller waiting on an HTTP request cannot wait longer than this. */
 export const RPC_TIMEOUT_MS = 10_000;
@@ -34,13 +38,33 @@ export async function sendRpc<TResponse, TPayload extends object>(
   }
 }
 
-function toAppError(error: unknown): Error {
+/**
+ * Where the serialized `AppError` sits in what the client receives. Over RMQ,
+ * Nest 11 delivers an `RpcException` as `{ error: <its payload>, message }` —
+ * the payload one level down. Reading only the top level missed it, and every
+ * refusal identity sent (a wrong password, an expired code, a bad refresh
+ * token) reached the client as a 500. Found by running the stack; the unit
+ * tests had been handing this function the unwrapped shape all along.
+ */
+function serializedAppError(error: unknown): SerializedAppError | null {
   if (isSerializedAppError(error)) {
+    return error;
+  }
+
+  const wrapped = (error as { error?: unknown } | null)?.error;
+
+  return isSerializedAppError(wrapped) ? wrapped : null;
+}
+
+function toAppError(error: unknown): Error {
+  const refusal = serializedAppError(error);
+
+  if (refusal) {
     return new AppError(
-      error.code,
-      error.message,
-      error.httpStatus,
-      error.details,
+      refusal.code,
+      refusal.message,
+      refusal.httpStatus,
+      refusal.details,
     );
   }
 

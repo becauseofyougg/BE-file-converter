@@ -35,7 +35,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: postgres
+      # Pinned to where the volume is mounted. Newer 18.x images default to a
+      # versioned subdirectory and refuse to start when data sits at the old
+      # path — which is where every volume this stack has created so far keeps it.
+      PGDATA: /var/lib/postgresql/data
     ports:
+      # Override with POSTGRES_PORT when a local Postgres already holds 5432.
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -63,10 +68,18 @@ services:
       timeout: 10s
       retries: 10
 
+  # MinIO stopped publishing images: `minio/minio` and `minio/mc` are gone from
+  # Docker Hub and quay.io, and pulling either fails. Chainguard builds the same
+  # server from source and publishes it. The code only speaks S3, so any
+  # S3-compatible server would do — this one keeps the MinIO console as well.
   minio:
-    image: minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
     container_name: fc-minio
     command: server /data --console-address ":9001"
+    # The image runs as uid 65532, and a fresh named volume is owned by root,
+    # so the server cannot write to it. Root is acceptable for a local S3
+    # emulator; the application containers still run as `node`.
+    user: "0:0"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
@@ -75,24 +88,33 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    # No healthcheck: the image is distroless, with no shell or client to run
+    # one. `minio-init` waits for the API instead, and whatever needs storage
+    # waits for `minio-init` — which is the stronger guarantee anyway, since
+    # it means the buckets exist too.
 
-  # Creates the two private buckets, then exits.
+  # Waits for the S3 API, creates the two private buckets, then exits.
   minio-init:
-    image: minio/mc:latest
+    image: amazon/aws-cli:latest
     container_name: fc-minio-init
     depends_on:
-      minio:
-        condition: service_healthy
+      - minio
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://minio:9000
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} &&
-      mc mb --ignore-existing local/uploads &&
-      mc mb --ignore-existing local/results &&
+      for attempt in $$(seq 1 60); do
+        aws s3api list-buckets > /dev/null 2>&1 && break;
+        [ $$attempt -eq 60 ] && echo 'storage never came up' && exit 1;
+        sleep 1;
+      done;
+      for bucket in uploads results; do
+        aws s3api head-bucket --bucket $$bucket 2> /dev/null ||
+          aws s3api create-bucket --bucket $$bucket > /dev/null || exit 1;
+      done;
       echo 'buckets ready'
       "
 
@@ -127,8 +149,9 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
-      minio:
-        condition: service_healthy
+      # Not just the server: the buckets, which minio-init creates.
+      minio-init:
+        condition: service_completed_successfully
 
   identity-service:
     <<: *service-defaults
@@ -142,6 +165,9 @@ services:
       PORT: 3001
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/identity
       JWT_SECRET: ${JWT_SECRET:-change-me-to-at-least-32-characters-long}
+      # A different secret from the access token's, and only identity holds it:
+      # the gateway can check an access token, but never mint a session.
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-too-and-not-to-the-same-value}
       AUTH_CONFIRM_REGISTRATION: ${AUTH_CONFIRM_REGISTRATION:-true}
       AUTH_CONFIRM_METHOD: ${AUTH_CONFIRM_METHOD:-otp}
     depends_on:
@@ -171,8 +197,9 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      minio:
-        condition: service_healthy
+      # Not just the server: the buckets, which minio-init creates.
+      minio-init:
+        condition: service_completed_successfully
 
   notification-service:
     <<: *service-defaults

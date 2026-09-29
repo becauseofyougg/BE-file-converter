@@ -4,7 +4,6 @@ import type { ClientProxy } from '@nestjs/microservices';
 import { ConfigModule } from '@core/config/config.module';
 import { brokerProbe, storageProbe } from '@core/health/broker.probe';
 import { HealthModule } from '@core/health/health.module';
-import { HEALTH_PROBES } from '@core/health/health.probes';
 import { ThrottlerModule } from '@core/throttler/throttler.module';
 import { ObservabilityModule } from '@obs/logger.module';
 import { StorageModule } from '@storage/storage.module';
@@ -28,7 +27,17 @@ import { UsersModule } from './modules/users/users.module';
   imports: [
     ConfigModule.forRoot({ validationSchema: gatewayConfigSchema }),
     ObservabilityModule,
-    HealthModule,
+    // The gateway owns no database, so it reports on the two things it cannot
+    // serve a request without: the broker it asks identity through, and the
+    // bucket it presigns from.
+    HealthModule.register({
+      imports: [StorageModule],
+      inject: [IDENTITY_CLIENT, StorageService],
+      useFactory: (identity: ClientProxy, storage: StorageService) => [
+        brokerProbe(identity),
+        storageProbe(storage),
+      ],
+    }),
     ThrottlerModule,
     StorageModule,
     MessagingModule,
@@ -43,19 +52,6 @@ import { UsersModule } from './modules/users/users.module';
     UsersModule,
     ConversionsModule,
     FormatsModule,
-  ],
-  providers: [
-    {
-      // The gateway owns no database, so it reports on the two things it
-      // cannot serve a request without: the broker it asks identity through,
-      // and the bucket it presigns from.
-      provide: HEALTH_PROBES,
-      inject: [IDENTITY_CLIENT, StorageService],
-      useFactory: (identity: ClientProxy, storage: StorageService) => [
-        brokerProbe(identity),
-        storageProbe(storage),
-      ],
-    },
   ],
 })
 export class AppModule {}

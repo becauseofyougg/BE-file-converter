@@ -42,4 +42,7 @@ EXPOSE 3001
 # behaved. Prisma takes an advisory lock, so several replicas starting at once
 # is safe — but in production this belongs in a deploy step that finishes
 # before any new container is admitted, not in the container's own CMD.
-CMD ["sh", "-c", "npx prisma migrate deploy --schema apps/identity-service/prisma/schema.prisma && node dist/apps/identity-service/src/main"]
+# The Prisma CLI reads IDENTITY_DATABASE_URL (the schema's own variable, so the
+# three schemas can share one .env on a host); the container is given only
+# DATABASE_URL, so the one is handed to the other here.
+CMD ["sh", "-c", "IDENTITY_DATABASE_URL=\"$DATABASE_URL\" npx prisma migrate deploy --schema apps/identity-service/prisma/schema.prisma && node dist/apps/identity-service/src/main"]

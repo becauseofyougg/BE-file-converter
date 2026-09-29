@@ -100,7 +100,7 @@ describe('HealthService', () => {
     ]);
 
     await service.checkHealth();
-    const result = (await indicators[0]()) as {
+    const result = (await indicators[0]()) as unknown as {
       rabbitmq: { message: string };
     };
 

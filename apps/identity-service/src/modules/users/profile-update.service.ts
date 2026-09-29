@@ -128,7 +128,7 @@ export class ProfileUpdateService {
    */
   private assertWritable(patch: UserPatch, audience: ProfileAudience): void {
     const allowed = PROFILE_PATCH_POLICY[audience];
-    const refused = Object.keys(patch).filter(
+    const refused = sentFields(patch).filter(
       (field) => !allowed.includes(field as keyof UserPatch),
     );
 
@@ -180,7 +180,7 @@ export class ProfileUpdateService {
       event: 'users.profile.updated',
       actorUserId: input.viewerUserId,
       targetUserId: input.targetUserId,
-      fields: Object.keys(input.patch),
+      fields: sentFields(input.patch),
       audience,
       outcome,
       reason,
@@ -202,6 +202,20 @@ export class ProfileUpdateService {
  * look identical and behave differently. Only fields the caller actually sent
  * are touched, so the distinction a PATCH exists to express survives.
  */
+/**
+ * The fields the caller actually sent. Not `Object.keys`: the patch arrives as
+ * a class-transformed DTO, and with `target: ES2023` every declared property
+ * of that class is an own property — set to `undefined` when absent. Counting
+ * keys therefore counted `email` on every request, and a Self changing only
+ * their name was refused for touching their address. `null` stays: it is how
+ * a PATCH says "clear this".
+ */
+export function sentFields(patch: UserPatch): string[] {
+  return Object.entries(patch)
+    .filter(([, value]) => value !== undefined)
+    .map(([field]) => field);
+}
+
 function normalizePatch(patch: UserPatch): UserPatch {
   if (patch.displayName === undefined) {
     return patch;

@@ -140,7 +140,7 @@ describe('RbacConfigService', () => {
     it('announces the change with the version listeners will fetch', async () => {
       await service.invalidate(notice);
 
-      const [eventName, payload] = outbox.publish.mock.calls[0] as [
+      const [eventName, payload] = outbox.publish.mock.calls[0] as unknown as [
         string,
         { version: string },
       ];

@@ -1,5 +1,6 @@
 import type { ExecutionContext } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
+import type { FastifyRequest } from 'fastify';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { AppError } from '@core/errors/app-error';
@@ -34,7 +35,7 @@ function httpContext(): {
 const answering = (
   answer: RequestUser | null | Error,
 ): jest.Mocked<Authenticator> => ({
-  authenticate: jest.fn(() =>
+  authenticate: jest.fn<Promise<RequestUser | null>, [FastifyRequest]>(() =>
     answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer),
   ),
 });

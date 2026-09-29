@@ -9,6 +9,25 @@ import { BaseConfig } from '@core/config/config.types';
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
 
 /**
+ * Human-readable lines on a developer's terminal — when `pino-pretty` is
+ * actually installed. It is a dev dependency, so the images prune it, while the
+ * compose stack still runs them with `NODE_ENV=development`; asking pino for a
+ * transport that is not there crashes every service at boot. Inside a
+ * container the JSON is what a log collector wants anyway.
+ */
+export function prettyTransport(
+  resolve: (id: string) => string = require.resolve,
+): { target: string; options: { singleLine: boolean } } | undefined {
+  try {
+    resolve('pino-pretty');
+  } catch {
+    return undefined;
+  }
+
+  return { target: 'pino-pretty', options: { singleLine: true } };
+}
+
+/**
  * Structured JSON logs to stdout, one line per event.
  *
  * The correlation id is taken from the inbound header or generated at the edge,
@@ -58,7 +77,7 @@ import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
 
           transport:
             config.get('NODE_ENV') === 'development'
-              ? { target: 'pino-pretty', options: { singleLine: true } }
+              ? prettyTransport()
               : undefined,
         },
       }),

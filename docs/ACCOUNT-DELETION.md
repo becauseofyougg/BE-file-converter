@@ -191,14 +191,15 @@ data whose destruction it is recording would be a strange thing to build.
 
 ## 9. Still open
 
-1. **Nothing has been run.** Docker is unavailable in the development environment used so far,
-   so both paths, the migration and the event are covered by unit tests and by reading — not by
-   a live Postgres and RabbitMQ.
-2. **Nothing consumes `user.deleted`.** `notification-service` sends no farewell and no
-   confirmation code, and no service removes the photo from object storage or purges the user's
-   conversion jobs. Identity's own erasure is complete; the rest of the system has not been told
-   what to do about it yet. Today that leaves nothing behind in practice — no uploader exists, so
-   `photo_key` is always null — but it is the gap that matters before this is a real GDPR answer.
+1. **Verified on the running compose stack** (2026-09-28), through the gateway: a Self deletion asks for a
+   code, the code arrives, confirming it answers 204, the session stops working, and the row is
+   anonymised to `deleted-<id>@invalid` rather than dropped.
+2. **`user.deleted` is only half consumed.** `notification-service` sends the confirmation code
+   and the farewell ([NOTIFICATIONS.md](NOTIFICATIONS.md)), but no service removes the photo from
+   object storage or purges the user's conversion jobs. Today that leaves nothing behind in
+   practice — no uploader exists, so `photo_key` is always null — but it is the gap that matters
+   before this is a real GDPR answer. The identity outbox also keeps the address from this event
+   after it is published; see [NOTIFICATIONS.md §10](NOTIFICATIONS.md#10-still-open).
 3. The erasure is immediate, with no grace period. A user who deletes by mistake has no recourse,
    and the data is genuinely gone. A `deleted_at` in the future plus a nightly sweep would give a
    30-day window; whether that is wanted is a product decision, and the column is already the

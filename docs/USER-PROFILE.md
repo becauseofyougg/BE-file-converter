@@ -146,9 +146,9 @@ copies the data it audits doubles the number of places that data has to be prote
 
 ## 7. Still open
 
-1. **Nothing has been run.** Docker is unavailable in the development environment used so
-   far, so the route, the grant migration and the presign are covered by unit tests and by
-   reading — not by a live Postgres and MinIO.
+1. **Verified on the running compose stack** (2026-09-28), through the gateway: Self reads its own profile, and
+   another account id is refused with 403 whether or not it exists. The presign path has not run:
+   no account has a photo, for the reason in item 2.
 2. **Nothing sets `photo_key`.** Uploading a photo is a separate feature; until it exists,
    `photo` is always `null`. Photos share the `uploads` bucket under a key prefix rather
    than taking a bucket of their own, which upload should keep to.
