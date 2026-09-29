@@ -166,6 +166,30 @@ describe('JwtAuthenticator', () => {
   });
 
   /**
+   * docs/AUTHORIZATION.md §1.3.1: `sub` must be present. A genuine signature
+   * on a token naming nobody used to pass, and carried an undefined user id
+   * into identity — whose validation turned it into a 500.
+   */
+  it.each([
+    ['no sub at all', { roles: ['ADMIN'], jti: 'jti-1' }],
+    ['an empty sub', { sub: '', roles: ['ADMIN'], jti: 'jti-1' }],
+    ['a sub that is not a string', { sub: 42, roles: ['ADMIN'], jti: 'jti-1' }],
+  ])('refuses a genuine token with %s', async (_label, claims) => {
+    jwt.verifyAsync.mockResolvedValue(claims);
+
+    await expect(
+      authenticator.authenticate(
+        requestWith({ headers: { authorization: 'Bearer signed' } }),
+      ),
+    ).rejects.toThrow(
+      expect.objectContaining({
+        code: ERROR_CODES.UNAUTHENTICATED,
+        httpStatus: 401,
+      }),
+    );
+  });
+
+  /**
    * A token with no `roles` claim would otherwise yield `undefined`, and the
    * evaluator would crash rather than deny. It must become "no roles".
    */

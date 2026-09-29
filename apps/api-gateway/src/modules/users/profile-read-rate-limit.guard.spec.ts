@@ -1,6 +1,9 @@
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { ThrottlerStorage } from '@nestjs/throttler';
+import {
+  type ThrottlerStorage,
+  ThrottlerStorageService,
+} from '@nestjs/throttler';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { ProfileReadRateLimitGuard } from './profile-read-rate-limit.guard';
@@ -46,11 +49,13 @@ describe('ProfileReadRateLimitGuard', () => {
       ),
     ).resolves.toBe(true);
 
+    // Milliseconds — this asserted 3600 (seconds) before, and so pinned the
+    // bug that made an hour-long window last 3.6 s.
     expect(storage.increment).toHaveBeenCalledWith(
       `profile-read:${VIEWER}`,
-      3600,
+      3_600_000,
       60,
-      0,
+      expect.any(Number),
       'profile-read',
     );
   });
@@ -73,8 +78,8 @@ describe('ProfileReadRateLimitGuard', () => {
     storage.increment.mockResolvedValue({
       totalHits: 61,
       timeToExpire: 1200,
-      isBlocked: false,
-      timeToBlockExpire: 0,
+      isBlocked: true,
+      timeToBlockExpire: 1200,
     });
 
     await expect(
@@ -104,5 +109,44 @@ describe('ProfileReadRateLimitGuard', () => {
     ).resolves.toBe(true);
 
     expect(storage.increment).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Against the real storage, not a mock: the mock happily accepted a window in
+ * seconds, and the limit then held for 3.6 s instead of an hour.
+ */
+describe('ProfileReadRateLimitGuard with the real throttler storage', () => {
+  let storage: ThrottlerStorageService;
+  let guard: ProfileReadRateLimitGuard;
+
+  beforeEach(() => {
+    storage = new ThrottlerStorageService();
+    const reflector = new Reflector();
+    jest
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockReturnValue({ limit: 2, ttlMs: 3_600_000 });
+    guard = new ProfileReadRateLimitGuard(storage, reflector);
+    jest.spyOn(guard['logger'], 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => storage.onApplicationShutdown());
+
+  it('refuses past the limit, and for the whole configured window', async () => {
+    const read = () =>
+      guard.canActivate(
+        buildContext({ userId: TARGET }, { id: VIEWER, roles: ['SUPPORT'] }),
+      );
+
+    await read();
+    await read();
+
+    const error = (await read().catch((caught: unknown) => caught)) as {
+      code: string;
+      details: { retryAfterSeconds: number };
+    };
+
+    expect(error.code).toBe(ERROR_CODES.RATE_LIMITED);
+    expect(error.details.retryAfterSeconds).toBeGreaterThan(3_500);
   });
 });

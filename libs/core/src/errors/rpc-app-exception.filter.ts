@@ -1,4 +1,9 @@
-import { Catch, ExceptionFilter, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Catch,
+  ExceptionFilter,
+  Logger,
+} from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
 import { throwError } from 'rxjs';
 
@@ -29,6 +34,32 @@ export class RpcAppExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof RpcException) {
       return throwError(() => exception);
+    }
+
+    // The payload failed this service's own validation. The gateway validates
+    // first with the same rules, so this means a field it forwards unshaped —
+    // a header — or a contract drift. Either way it is the request's fault:
+    // a 400 naming the rule, not a 500 that sends someone to the logs.
+    if (exception instanceof BadRequestException) {
+      const response = exception.getResponse() as { message?: unknown };
+
+      return throwError(
+        () =>
+          new RpcException({
+            code: ERROR_CODES.VALIDATION_FAILED,
+            message: 'The request failed validation',
+            httpStatus: 400,
+            details: {
+              errors: Array.isArray(response.message)
+                ? response.message
+                : [
+                    typeof response.message === 'string'
+                      ? response.message
+                      : exception.message,
+                  ],
+            },
+          }),
+      );
     }
 
     this.logger.error(

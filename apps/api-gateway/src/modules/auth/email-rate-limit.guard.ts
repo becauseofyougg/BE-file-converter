@@ -62,15 +62,22 @@ export class EmailRateLimitGuard implements CanActivate {
 
     const key = `email:${createHash('sha256').update(email.trim().toLowerCase()).digest('hex')}`;
 
+    // Milliseconds: throttler v6 takes the window in ms. Passing seconds here
+    // made a 15-minute window last 0.9 s, so the per-email limit only ever
+    // caught a burst faster than a second — which no brute force needs to be.
     const record = await this.storage.increment(
       key,
-      Math.ceil(config.ttlMs / 1000),
+      config.ttlMs,
       config.limit,
-      0,
+      // Blocked for the rest of the window once over the limit. With 0 the
+      // storage lifts the block the instant it sets it and resets the count,
+      // so the request that crossed the line went through and counting began
+      // again: the limit was never enforced, whatever the window.
+      config.ttlMs,
       'email',
     );
 
-    if (record.totalHits > config.limit) {
+    if (record.isBlocked) {
       this.logger.warn({
         event: 'auth.rate_limited',
         dimension: 'email',
@@ -81,7 +88,7 @@ export class EmailRateLimitGuard implements CanActivate {
         ERROR_CODES.RATE_LIMITED,
         'Too many attempts for this email address, please try again later',
         429,
-        { retryAfterSeconds: record.timeToExpire },
+        { retryAfterSeconds: record.timeToBlockExpire },
       );
     }
 

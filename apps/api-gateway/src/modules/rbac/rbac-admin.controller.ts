@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import {
   Body,
   Controller,
@@ -26,7 +24,7 @@ import {
   type RbacConfig,
   type RoleDto,
 } from '@contracts/messages/rbac.messages';
-import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
+import { correlationIdFor } from '@core/messaging/correlation-id';
 import { IDENTITY_CLIENT } from '../../messaging/messaging.module';
 import { sendRpc } from '../../messaging/rpc';
 import { AuthenticationGuard } from '../auth/authentication.guard';
@@ -252,9 +250,7 @@ export class RbacAdminController {
   ): Promise<T> {
     return sendRpc<T, Record<string, unknown>>(this.identity, pattern, {
       ...payload,
-      correlationId:
-        (request.headers[CORRELATION_ID_HEADER] as string | undefined) ??
-        String(request.id ?? randomUUID()),
+      correlationId: correlationIdFor(request),
       ...(user ? { actorUserId: user.id } : {}),
     });
   }

@@ -14,6 +14,7 @@ import {
   ErrorResponse,
 } from '@contracts/errors/error-codes';
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
+import { acceptCorrelationId } from '../messaging/correlation-id';
 import { AppError } from './app-error';
 
 /**
@@ -32,8 +33,9 @@ export class HttpAppExceptionFilter implements ExceptionFilter {
     const request = http.getRequest<FastifyRequest>();
     const reply = http.getResponse<FastifyReply>();
 
+    // Echoed in a response header, so only a value we would have accepted.
     const correlationId =
-      (request.headers?.[CORRELATION_ID_HEADER] as string | undefined) ??
+      acceptCorrelationId(request.headers?.[CORRELATION_ID_HEADER]) ??
       String(request.id ?? '');
 
     const { status, body } = this.describe(exception, correlationId);

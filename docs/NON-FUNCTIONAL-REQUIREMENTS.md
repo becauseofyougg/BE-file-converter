@@ -156,10 +156,16 @@ The first two are `@nestjs/throttler`; the third is a business rule and lives in
 from the job table inside the job-creation transaction — a throttler counter cannot express "3 jobs
 *still running*".
 
-To make this real, two changes to the boilerplate: register `ThrottlerGuard` as an `APP_GUARD` (it is
-configured but not applied today, so nothing is currently limited), and make the throttler storage
-**Redis-backed** — the default in-memory store counts per replica, so N gateway replicas multiply every
-limit by N.
+`ThrottlerGuard` is an `APP_GUARD`, so every route is throttled per IP unless it opts out (`/health`
+does). The per-email and per-viewer limits are two small guards over the same `ThrottlerStorage`, and
+both had to get two details right that a mocked storage never showed: the window is passed in
+**milliseconds**, and an exceeded limit **blocks for the rest of the window** — with a block duration
+of 0 the storage lifts the block the moment it sets it, resets the count and lets the request through.
+With either mistake the per-email login limit never fired; tests against the real
+`ThrottlerStorageService`, and the smoke test's sixth wrong password, now pin both.
+
+Still open: the storage is **in-memory**, so N gateway replicas multiply every limit by N. A
+Redis-backed `ThrottlerStorage` fixes that without touching the guards.
 
 Behind a proxy, `trustProxy` must be set on the Fastify adapter and the client IP taken from
 `X-Forwarded-For`; without it every request looks like it comes from the load balancer and the per-IP

@@ -1,41 +1,83 @@
+import {
+  type CallHandler,
+  type ExecutionContext,
+  Injectable,
+  type NestInterceptor,
+} from '@nestjs/common';
 import type { RmqContext } from '@nestjs/microservices';
-
-import { AppError } from '../errors/app-error';
+import { finalize, type Observable } from 'rxjs';
 
 interface AckableChannel {
   ack: (message: unknown) => void;
 }
 
 /**
- * Runs a message handler and acks it manually.
+ * Messages already acknowledged. Acking one twice is not harmless: RabbitMQ
+ * answers an unknown delivery tag by closing the channel, which drops every
+ * other message in flight on it.
+ */
+const acked = new WeakSet<object>();
+
+/** Acks the message behind `context`, once, however many callers ask. */
+export function ackOnce(context: RmqContext): void {
+  const message = context.getMessage() as object;
+
+  if (acked.has(message)) {
+    return;
+  }
+
+  acked.add(message);
+  (context.getChannelRef() as AckableChannel).ack(message);
+}
+
+/**
+ * Runs a request/response handler and acks its message — **whatever happens**.
  *
- * Consumers are configured with `noAck: false`, so the broker keeps a message
- * until it is acknowledged — a crash mid-handling redelivers rather than loses
- * it. That leaves the question of what to do with a *refusal*.
+ * Consumers run with `noAck: false`, and an unacked message is not redelivered
+ * while its channel lives: it sits in the consumer's only prefetch slot and
+ * the consumer takes nothing else. So "leave it unacked and it will be
+ * retried" was never true. It stopped identity answering anyone, until a
+ * restart redelivered the same message and stopped it again.
  *
- * A business refusal (a duplicate email, a wrong code, a 403) is a completed
- * handling: the reply carries the error code and the message is acked, because
- * a redelivery would be refused identically forever. Anything else is left
- * unacked, where a redelivery has a real chance of succeeding.
+ * For RPC, acking a failure loses nothing. The caller is waiting on a reply
+ * with a timeout; it gets the error (a business refusal with its code,
+ * anything else as `INTERNAL_ERROR`) and decides for itself whether to try
+ * again. A redelivery minutes later would answer a question nobody is still
+ * asking.
  */
 export async function settleRpc<T>(
   context: RmqContext,
   handler: () => Promise<T>,
 ): Promise<T> {
-  const channel = context.getChannelRef() as AckableChannel;
-  const message = context.getMessage();
-
   try {
-    const result = await handler();
+    return await handler();
+  } finally {
+    ackOnce(context);
+  }
+}
 
-    channel.ack(message);
-
-    return result;
-  } catch (error) {
-    if (error instanceof AppError) {
-      channel.ack(message);
+/**
+ * The same guarantee for what fails **before** the handler runs — a
+ * `ValidationPipe` refusing the payload. Pipes run inside the interceptor
+ * chain, so their failure reaches `finalize`; it never reaches `settleRpc`,
+ * and was the way in: one message with an over-long header field wedged
+ * identity for everyone. (Guards run before interceptors and are not covered;
+ * the RPC handlers have none.)
+ *
+ * Registered globally on a request/response service; `ackOnce` makes it safe
+ * alongside `settleRpc`, which usually gets there first. Event consumers
+ * settle their messages themselves (ack, retry ladder, dead letter) and must
+ * not have this.
+ */
+@Injectable()
+export class RmqAckInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    if (context.getType() !== 'rpc') {
+      return next.handle();
     }
 
-    throw error;
+    const rmq = context.switchToRpc().getContext<RmqContext>();
+
+    return next.handle().pipe(finalize(() => ackOnce(rmq)));
   }
 }

@@ -1,6 +1,6 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ThrottlerStorage } from '@nestjs/throttler';
+import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { AppError } from '@core/errors/app-error';
@@ -50,8 +50,8 @@ describe('EmailRateLimitGuard', () => {
     storage.increment.mockResolvedValue({
       totalHits: 4,
       timeToExpire: 1200,
-      isBlocked: false,
-      timeToBlockExpire: 0,
+      isBlocked: true,
+      timeToBlockExpire: 1200,
     });
 
     await expect(
@@ -65,8 +65,8 @@ describe('EmailRateLimitGuard', () => {
     storage.increment.mockResolvedValue({
       totalHits: 4,
       timeToExpire: 1200,
-      isBlocked: false,
-      timeToBlockExpire: 0,
+      isBlocked: true,
+      timeToBlockExpire: 1200,
     });
 
     expect.assertions(1);
@@ -114,5 +114,57 @@ describe('EmailRateLimitGuard', () => {
   it('stands aside when the body carries no email to key on', async () => {
     await expect(guard.canActivate(contextWith({}))).resolves.toBe(true);
     expect(storage.increment).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Against the real storage, not a mock: the mock happily accepted the window
+ * in seconds, and a 15-minute limit on login attempts then lasted 0.9 s —
+ * which no brute force is slow enough to notice.
+ */
+describe('EmailRateLimitGuard with the real throttler storage', () => {
+  let storage: ThrottlerStorageService;
+  let guard: EmailRateLimitGuard;
+
+  beforeEach(() => {
+    storage = new ThrottlerStorageService();
+    const reflector = {
+      getAllAndOverride: jest
+        .fn()
+        .mockReturnValue({ limit: 5, ttlMs: 15 * 60 * 1000 }),
+    } as unknown as Reflector;
+    guard = new EmailRateLimitGuard(storage, reflector);
+    jest.spyOn(guard['logger'], 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => storage.onApplicationShutdown());
+
+  it('refuses the sixth attempt on one address, for the whole 15 minutes', async () => {
+    const attempt = () =>
+      guard.canActivate(contextWith({ email: 'victim@example.com' }));
+
+    for (let i = 0; i < 5; i += 1) {
+      await expect(attempt()).resolves.toBe(true);
+    }
+
+    const error = (await attempt().catch((caught: unknown) => caught)) as {
+      code: string;
+      httpStatus: number;
+      details: { retryAfterSeconds: number };
+    };
+
+    expect(error.code).toBe(ERROR_CODES.RATE_LIMITED);
+    expect(error.httpStatus).toBe(429);
+    expect(error.details.retryAfterSeconds).toBeGreaterThan(850);
+  });
+
+  it('counts each address separately', async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await guard.canActivate(contextWith({ email: 'one@example.com' }));
+    }
+
+    await expect(
+      guard.canActivate(contextWith({ email: 'two@example.com' })),
+    ).resolves.toBe(true);
   });
 });

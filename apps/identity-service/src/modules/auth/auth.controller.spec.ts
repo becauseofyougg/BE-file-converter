@@ -16,9 +16,11 @@ describe('identity AuthController', () => {
   let context: RmqContext;
   let controller: AuthController;
 
-  const message = { fields: { deliveryTag: 1 } };
+  // A fresh object per test, as each delivery is: acks are tracked per message.
+  let message: { fields: { deliveryTag: number } };
 
   beforeEach(() => {
+    message = { fields: { deliveryTag: 1 } };
     auth = {
       register: jest.fn().mockResolvedValue({ status: 'registered' }),
       verifyEmail: jest.fn().mockResolvedValue({ status: 'verified' }),
@@ -138,13 +140,15 @@ describe('identity AuthController', () => {
       expect(ack).toHaveBeenCalledWith(message);
     });
 
-    it('leaves a crash for the broker to redeliver', async () => {
+    // Acked, not left for a redelivery that never comes: an unacked message
+    // holds the consumer's only prefetch slot and identity stops answering.
+    it('acks a crash too, so one bad message cannot wedge the consumer', async () => {
       login.login.mockRejectedValue(new Error('database gone'));
 
       await expect(
         controller.logIn({ email: 'a@b.c', password: 'x' }, context),
       ).rejects.toThrow('database gone');
-      expect(ack).not.toHaveBeenCalled();
+      expect(ack).toHaveBeenCalledWith(message);
     });
   });
 });

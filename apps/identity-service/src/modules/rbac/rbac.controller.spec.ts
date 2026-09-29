@@ -20,10 +20,12 @@ describe('identity RbacController', () => {
   let context: RmqContext;
   let controller: RbacController;
 
-  const message = { fields: { deliveryTag: 1 } };
+  // A fresh object per test, as each delivery is: acks are tracked per message.
+  let message: { fields: { deliveryTag: number } };
   const ACTOR = { actorUserId: 'admin-1', correlationId: 'correlation-1' };
 
   beforeEach(() => {
+    message = { fields: { deliveryTag: 1 } };
     config = {
       getConfig: jest.fn().mockResolvedValue({ version: 'v1' }),
       check: jest.fn().mockResolvedValue({ allowed: true }),
@@ -247,13 +249,15 @@ describe('identity RbacController', () => {
       expect(ack).toHaveBeenCalledWith(message);
     });
 
-    it('leaves a crash unacked, so the broker redelivers it', async () => {
+    // Acked, not left for a redelivery that never comes: an unacked message
+    // holds the consumer's only prefetch slot and identity stops answering.
+    it('acks a crash too, so one bad message cannot wedge the consumer', async () => {
       roles.create.mockRejectedValue(new Error('connection lost'));
 
       await expect(
         controller.createRole({ name: 'SUPPORT', ...ACTOR }, context),
       ).rejects.toThrow('connection lost');
-      expect(ack).not.toHaveBeenCalled();
+      expect(ack).toHaveBeenCalledWith(message);
     });
   });
 });

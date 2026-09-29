@@ -18,7 +18,12 @@ process.env.CORS_ORIGINS = 'http://localhost:5174';
 process.env.THROTTLE_GLOBAL_TTL = '10000';
 process.env.THROTTLE_GLOBAL_LIMIT = '10';
 
-process.env.RABBITMQ_URL = 'amqp://guest:guest@localhost:5672';
+// Deliberately unreachable. The suite is broker-less by design — the RBAC
+// config never loads, so RBAC denies and a 401 can be told from a 403. Pointed
+// at localhost:5672 it depended on whether a developer had the compose stack
+// up: with it, the real config loaded, the admin token was allowed, and the
+// suite failed on a machine that was working correctly.
+process.env.RABBITMQ_URL = 'amqp://guest:guest@127.0.0.1:1';
 
 process.env.S3_ENDPOINT = 'http://localhost:9000';
 process.env.S3_REGION = 'us-east-1';
