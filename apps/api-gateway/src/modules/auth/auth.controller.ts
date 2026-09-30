@@ -14,6 +14,10 @@ import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import {
+  ApiConfirmationBody,
+  ApiResendVerificationBody,
+} from '../shared/api-confirmation-body';
+import {
   AcceptedDto,
   ConfirmationRequiredDto,
   ErrorResponseDto,
@@ -220,6 +224,7 @@ export class AuthController {
     type: ErrorResponseDto,
   })
   @Post('confirm')
+  @ApiConfirmationBody(ConfirmLoginDto)
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
   async confirmLogin(
@@ -284,6 +289,7 @@ export class AuthController {
     type: ErrorResponseDto,
   })
   @Post('verify-email')
+  @ApiConfirmationBody(VerifyEmailDto)
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
   async verifyEmail(
@@ -316,6 +322,7 @@ export class AuthController {
   })
   @ApiResponse({ status: 202, type: AcceptedDto })
   @Post('resend-verification')
+  @ApiResendVerificationBody(ResendVerificationDto)
   @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
   @EmailLimit(5, HOUR_MS)

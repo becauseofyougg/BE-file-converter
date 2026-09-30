@@ -65,6 +65,47 @@ describe('api-gateway (e2e)', () => {
       expect((response.body as { openapi?: string }).openapi).toMatch(/^3\./);
     });
 
+    /**
+     * These routes take a code *or* a link token. Generated from the DTO, the
+     * example mixed both — `{ challengeId, code, token: "string" }` — and a
+     * placeholder token read as something Swagger had remembered.
+     */
+    it.each([
+      '/auth/verify-email',
+      '/auth/confirm',
+      '/users/{userId}/email-change/confirm',
+      '/users/{userId}/deletion/confirm',
+    ])('offers %s as two separate examples, code first', async (path) => {
+      const response = await request(app.getHttpServer())
+        .get('/docs/json')
+        .expect(200);
+
+      const examples = (
+        response.body as {
+          paths: Record<
+            string,
+            {
+              post: {
+                requestBody: {
+                  content: Record<
+                    string,
+                    { examples: Record<string, { value: object }> }
+                  >;
+                };
+              };
+            }
+          >;
+        }
+      ).paths[path].post.requestBody.content['application/json'].examples;
+
+      expect(Object.keys(examples)).toEqual(['code', 'link']);
+      expect(Object.keys(examples.code.value).sort()).toEqual([
+        'challengeId',
+        'code',
+      ]);
+      expect(Object.keys(examples.link.value)).toEqual(['token']);
+    });
+
     it('serves the UI', async () => {
       const response = await request(app.getHttpServer())
         .get('/docs')

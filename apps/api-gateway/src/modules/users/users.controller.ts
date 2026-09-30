@@ -25,6 +25,7 @@ import type {
 } from '@contracts/messages/users.messages';
 import { correlationIdFor } from '@core/messaging/correlation-id';
 import { Public } from '@core/auth/public.decorator';
+import { ApiConfirmationBody } from '../shared/api-confirmation-body';
 import { CurrentUser, type RequestUser } from '../auth/request-user';
 import { SessionCookiesService } from '../auth/session-cookies.service';
 import {
@@ -218,6 +219,7 @@ export class UsersController {
     type: ErrorResponseDto,
   })
   @Post(':userId/email-change/confirm')
+  @ApiConfirmationBody(ConfirmEmailChangeDto)
   @Public()
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
@@ -310,6 +312,7 @@ export class UsersController {
     type: ErrorResponseDto,
   })
   @Post(':userId/deletion/confirm')
+  @ApiConfirmationBody(ConfirmDeletionDto)
   @HttpCode(HttpStatus.NO_CONTENT)
   @Throttle({ default: { limit: 10, ttl: HOUR_MS } })
   async confirmDeletion(
