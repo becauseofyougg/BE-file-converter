@@ -14,6 +14,14 @@ x-s3-credentials: &s3-credentials
   S3_BUCKET_RESULTS: results
   S3_FORCE_PATH_STYLE: "true"
 
+# Where files go: `s3` (MinIO here) or `local` (a directory, on a volume the
+# gateway and conversion-service share). `STORAGE_DRIVER=local docker compose
+# up` switches both; the credentials above stay, so files written under s3
+# can still be read back.
+x-storage: &storage
+  STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+  STORAGE_LOCAL_ROOT: /var/lib/file-converter/storage
+
 x-service-defaults: &service-defaults
   restart: unless-stopped
   environment: &service-environment
@@ -134,7 +142,7 @@ services:
       context: .
       dockerfile: docker/api-gateway.Dockerfile
     environment:
-      <<: [*service-environment, *s3-credentials]
+      <<: [*service-environment, *s3-credentials, *storage]
       SERVICE_NAME: api-gateway
       PORT: 3000
       COOKIE_SECRET: ${COOKIE_SECRET:-change-me}
@@ -144,8 +152,11 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5174,http://localhost:4200}
       THROTTLE_GLOBAL_TTL: 10000
       THROTTLE_GLOBAL_LIMIT: 100
+      CONVERSION_UPLOAD_MAX_BYTES: ${CONVERSION_UPLOAD_MAX_BYTES:-52428800}
     ports:
       - "${GATEWAY_PORT:-3000}:3000"
+    volumes:
+      - converter_storage:/var/lib/file-converter/storage
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -187,11 +198,19 @@ services:
         # heavyweight engine lands (ffmpeg, libreoffice).
         CONVERTER_PACKAGES: ""
     environment:
-      <<: [*service-environment, *database-defaults, *s3-credentials]
+      <<: [*service-environment, *database-defaults, *s3-credentials, *storage]
       SERVICE_NAME: conversion-service
       PORT: 3002
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/conversion
       CONVERSION_FAMILY: ${CONVERSION_FAMILY:-image}
+      # `/api/convert` — docs/CONVERSIONS.md §5. A format's own limit is
+      # CONVERSION_MAX_BYTES_<FORMAT>; set one here to try it, e.g.
+      # CONVERSION_MAX_BYTES_XML: 2097152
+      CONVERSION_MAX_BYTES_DEFAULT: ${CONVERSION_MAX_BYTES_DEFAULT:-10485760}
+      CONVERSION_SYNC_TIMEOUT_MS: ${CONVERSION_SYNC_TIMEOUT_MS:-30000}
+      CONVERSION_RPC_CONCURRENCY: ${CONVERSION_RPC_CONCURRENCY:-4}
+    volumes:
+      - converter_storage:/var/lib/file-converter/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -232,4 +251,8 @@ volumes:
   rabbitmq_data:
     driver: local
   minio_data:
+    driver: local
+  # STORAGE_DRIVER=local: the gateway writes uploads here and reads results,
+  # conversion-service the other way round.
+  converter_storage:
     driver: local

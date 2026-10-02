@@ -1,10 +1,8 @@
 // The `conversion` database. One schema per service — nobody else reads these
 // tables, which is what keeps the services independently deployable.
 //
-// No models yet: this service's persistence is still to be built. The schema
-// exists so the client, the migration directory and the scripts are already
-// wired, and the first model is a one-line change rather than a setup task.
-// The tables it will hold are sketched in docs/ARCHITECTURE.md §7.
+// See docs/CONVERSIONS.md §6. The queued-job tables sketched in
+// docs/ARCHITECTURE.md §7 arrive with the first asynchronous family.
 
 generator client {
   provider = "prisma-client-js"
@@ -19,4 +17,64 @@ datasource db {
   // `DATABASE_URL` to the client constructor. Separate names because three
   // schemas share one root `.env` during development.
   url      = env("CONVERSION_DATABASE_URL")
+}
+
+enum ConversionOperationStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+
+  @@map("conversion_operation_status")
+}
+
+/// One conversion a user asked for — the history, and the audit trail.
+///
+/// Never the file's content: names, sizes, formats, checksums, the outcome.
+/// `user_id` has no foreign key — users live in identity's database — and
+/// survives the account's erasure, which empties the user row but keeps it.
+model ConversionOperation {
+  /// Chosen by the gateway before the upload, so the upload's storage key and
+  /// this row share it.
+  id     String                    @id @db.Uuid
+  userId String                    @map("user_id") @db.Uuid
+  status ConversionOperationStatus @default(PROCESSING)
+
+  /// The client's filename, as sent. Shown in the history; never a key.
+  sourceName     String  @map("source_name") @db.VarChar(255)
+  /// Null when no converter recognised the file.
+  sourceFormat   String? @map("source_format") @db.VarChar(16)
+  sourceSize     BigInt  @map("source_size")
+  /// SHA-256, hex.
+  sourceChecksum String? @map("source_checksum") @db.Char(64)
+
+  targetFormat   String  @map("target_format") @db.VarChar(16)
+  resultSize     BigInt? @map("result_size")
+  resultChecksum String? @map("result_checksum") @db.Char(64)
+
+  /// Where the result is, while it is. Null once deleted, or if there was none.
+  resultKey     String? @map("result_key") @db.VarChar(512)
+  /// The storage the result was written to — recorded, so changing
+  /// `STORAGE_DRIVER` does not orphan what an older setting wrote.
+  storageDriver String  @map("storage_driver") @db.VarChar(16)
+
+  /// The user asked to keep the result.
+  saved           Boolean   @default(false)
+  /// When an unsaved result is deleted. Null for saved ones.
+  resultExpiresAt DateTime? @map("result_expires_at") @db.Timestamptz(6)
+
+  errorCode    String? @map("error_code") @db.VarChar(64)
+  errorMessage String? @map("error_message") @db.VarChar(1024)
+  durationMs   Int?    @map("duration_ms")
+
+  correlationId String    @map("correlation_id") @db.VarChar(128)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  finishedAt    DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  /// The history: a user's operations, newest first, paged by (created_at, id).
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)], map: "ix_conversion_operations_user_history")
+  /// The cleanup job's scan for results past their time.
+  @@index([resultExpiresAt], map: "ix_conversion_operations_result_expires_at")
+  /// …and for operations a crash left half-done.
+  @@index([status, createdAt], map: "ix_conversion_operations_status_created_at")
+  @@map("conversion_operations")
 }

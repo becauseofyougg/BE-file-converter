@@ -16,6 +16,12 @@ export const EXCHANGES = {
 export const QUEUES = {
   /** request/response RPC surface of identity-service */
   IDENTITY_RPC: 'identity.rpc',
+  /**
+   * request/response RPC surface of conversion-service. Consumed by every
+   * replica whatever its family — they share one database, so any of them can
+   * answer, and synchronous conversion does not route by family.
+   */
+  CONVERSION_RPC: 'conversion.rpc',
   /** one work queue per format family, one deployment per work queue */
   conversionJobs: (family: FormatFamily) => `conversion.jobs.${family}`,
   /** retry ladder: x-message-ttl + DLX back to the work queue */

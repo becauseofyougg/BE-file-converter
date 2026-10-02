@@ -1,1 +1,2 @@
-export const S3_CLIENT = Symbol('S3_CLIENT');
+/** Every configured backend, by driver name — what `StorageResolver` reads. */
+export const STORAGE_BACKENDS = Symbol('STORAGE_BACKENDS');

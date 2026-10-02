@@ -56,6 +56,25 @@ async function bootstrap() {
     { inheritAppConfig: true },
   );
 
+  // Synchronous conversions: the gateway asks and waits (`/api/convert`).
+  // Shared by every replica whatever its family — the formats served this way
+  // are the pure-Node ones, which every image has. A prefetch above one,
+  // because each conversion runs on its own worker thread and the main thread
+  // only waits; the number is how many a replica takes on at once.
+  app.connectMicroservice<MicroserviceOptions>(
+    {
+      transport: Transport.RMQ,
+      options: {
+        urls: [config.get('RABBITMQ_URL')],
+        queue: QUEUES.CONVERSION_RPC,
+        queueOptions: { durable: true },
+        noAck: false,
+        prefetchCount: config.getNumber('CONVERSION_RPC_CONCURRENCY'),
+      },
+    },
+    { inheritAppConfig: true },
+  );
+
   // Stop consuming, finish the in-flight job, then exit — a deploy never kills
   // a running conversion.
   app.enableShutdownHooks();

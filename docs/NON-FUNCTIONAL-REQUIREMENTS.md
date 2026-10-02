@@ -34,6 +34,8 @@ The ones the API in §8 of the architecture actually demands:
 
 | Table | Index | Query it serves |
 |---|---|---|
+| `conversion_operations` | `(user_id, created_at DESC, id DESC)` | `GET /api/convert/history`, cursor-paged with `id` as the tie-break |
+| `conversion_operations` | `(result_expires_at)` · `(status, created_at)` | the clean-up job: unsaved results past their time, operations a crash left `PROCESSING` |
 | `conversion_jobs` | `(user_id, created_at DESC)` | `GET /conversions` — the user's job list, paginated |
 | `conversion_jobs` | `(status, expires_at)` | TTL cleanup job scanning for expired results |
 | `conversion_jobs` | partial on `status` where non-terminal | queue-depth / stuck-job metrics |
@@ -327,6 +329,10 @@ threshold. Coverage is reported per project once the monorepo split lands.
 - The security scheme declared is the **cookie**, not a bearer header, because that is how a browser
   authenticates here — so "Try it out" works against a real session instead of silently sending
   nothing. `bearer` is declared alongside it for callers that are not browsers.
+- The **synchronous** contract is the opposite and is spelled out just as plainly: `POST /api/convert`
+  returns `200` with the converted file as an attachment, and every error status it can answer is in
+  its description ([CONVERSIONS.md §2](CONVERSIONS.md#2-api)). `GET /api/convert/formats` is built
+  from the registry.
 - The async contract must be explicit in the docs: `POST /conversions` returns `202` with a `jobId`, not
   a converted file. This is the single most surprising thing about the API and belongs in the endpoint
   description, with the polling/SSE flow spelled out.

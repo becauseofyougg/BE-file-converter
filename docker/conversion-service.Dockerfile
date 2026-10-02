@@ -40,6 +40,11 @@ COPY --from=build /app/package.json ./
 # The schema and its migration history, so `migrate deploy` can run below.
 COPY --from=build /app/apps/conversion-service/prisma ./apps/conversion-service/prisma
 
+# Where STORAGE_DRIVER=local keeps files — see api-gateway.Dockerfile, which
+# shares the volume.
+RUN mkdir -p /var/lib/file-converter/storage \
+    && chown -R node:node /var/lib/file-converter
+
 # Converter binaries parse hostile input — this is where an RCE would land, so
 # the process runs unprivileged and writes only to its per-job temp dir.
 USER node

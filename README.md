@@ -22,12 +22,12 @@ same DTOs that validate requests, so the two cannot drift apart. It is served ou
 | Users: read / update profile, email change, erasure, admin directory | done | [USER-PROFILE](docs/USER-PROFILE.md), [PROFILE-UPDATE](docs/PROFILE-UPDATE.md), [ACCOUNT-DELETION](docs/ACCOUNT-DELETION.md), [USER-LIST](docs/USER-LIST.md) |
 | Email: eight mails, send log, retry ladder | done | [NOTIFICATIONS](docs/NOTIFICATIONS.md) |
 | Health, rate limiting, validation, CORS, logging, OpenAPI, ≥ 80 % coverage | done | [NFR](docs/NON-FUNCTIONAL-REQUIREMENTS.md) |
-| **File conversion** — upload, queue, workers, download | **not in this stage** | [ARCHITECTURE §5](docs/ARCHITECTURE.md) |
+| Text conversion: CSV ⇄ JSON ⇄ XML ⇄ YAML (all 12 pairs), synchronous, with history and optional saving | done | [CONVERSIONS](docs/CONVERSIONS.md) |
+| Storage: S3/MinIO or a local directory, chosen by `STORAGE_DRIVER` | done | [CONVERSIONS §6](docs/CONVERSIONS.md#6-streaming-threads-and-storage) |
+| Queued conversion of heavy families (image, document, audio/video): job queue, progress | not started | [ARCHITECTURE §5](docs/ARCHITECTURE.md) |
 | Password reset, in-app notifications / SSE | not started | |
 
-`conversion-service` and the gateway's `conversions` / `formats` modules are empty scaffolding:
-they boot, report healthy and do nothing. Each spec ends with a **Still open** section listing what
-is deliberately left for later.
+Each spec ends with a **Still open** section listing what is deliberately left for later.
 
 ### Trying it
 
@@ -47,6 +47,17 @@ docker compose up -d --build          # POSTGRES_PORT=5433 if a local Postgres h
    ```
 
    then `POST /auth/refresh` — roles are read at refresh, so the new one applies from there.
+4. Convert a file — signed in, from Swagger (`POST /api/convert`) or the command line:
+
+   ```bash
+   curl -c cookies.txt -H 'content-type: application/json' \
+     -d '{"email":"<you>","password":"<yours>"}' http://localhost:3000/auth/login
+   curl -b cookies.txt -F file=@people.csv -F targetFormat=json -F save=true \
+     -OJ http://localhost:3000/api/convert           # saves converted.json
+   ```
+
+   `GET /api/convert/formats` lists the directions, `GET /api/convert/history` your conversions.
+   `STORAGE_DRIVER=local docker compose up -d` keeps the files in a volume instead of MinIO.
 
 `npm run smoke` does all of the above and more — email change, erasure, what the outbox keeps —
 against the running stack, and is what CI runs after bringing it up.
@@ -57,7 +68,7 @@ against the running stack, and is what CI runs after bringing it up.
 |---|---|---|---|
 | `api-gateway` | 3000 | The only public HTTP surface: auth guards, rate limiting, uploads, presigned downloads, OpenAPI | — |
 | `identity-service` | 3001 | Registration, login, JWT issuing/refresh, email verification, profile | `identity` DB |
-| `conversion-service` | 3002 | Consumes conversion commands, runs the engines, writes results to storage. Stateless, N replicas | `conversion` DB |
+| `conversion-service` | 3002 | Converts files — synchronously over `conversion.rpc` today, each on its own worker thread — and keeps the history. Stateless, N replicas | `conversion` DB |
 | `notification-service` | 3003 | Consumes domain events, renders templates, sends SMTP mail | `notification` DB |
 
 Only the gateway serves real HTTP traffic. The workers expose HTTP for `/health` alone — an orchestrator
@@ -68,17 +79,17 @@ needs a way to tell a wedged service from a busy one; their work arrives over AM
 ```
 apps/
 ├── api-gateway/          HTTP edge (Fastify) + RMQ clients
-│   └── src/{config,messaging,modules/{auth,users,conversions,formats}}
+│   └── src/{config,messaging,modules/{auth,users,rbac,conversions}}
 ├── identity-service/     RMQ request/response handlers
 │   └── src/{config,database,modules/{auth,users,tokens}}
-├── conversion-service/   RMQ consumer, one deployment per format family
-│   └── src/{config,database,modules/{worker,converters,pipeline}}
+├── conversion-service/   RMQ request/response + (later) one work queue per format family
+│   └── src/{config,database,modules/{converters,data,operations,worker,pipeline}}
 └── notification-service/ RMQ consumer + SMTP
     └── src/{config,database,modules/{mailer,templates}}
 libs/
 ├── core/                 config, database, health, throttler
 ├── contracts/            message patterns, event payloads, topology, error codes — types, no logic
-├── storage/              S3/MinIO client: put, get stream, presign, delete
+├── storage/              FileStorage: S3/MinIO or a local directory — put, get stream, presign, delete
 └── observability/        pino logger, redaction, correlation id
 docker/                   Dockerfile per app + Postgres init
 docs/                     architecture, NFRs, feature specs

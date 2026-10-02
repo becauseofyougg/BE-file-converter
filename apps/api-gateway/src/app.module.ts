@@ -7,7 +7,7 @@ import { HealthModule } from '@core/health/health.module';
 import { ThrottlerModule } from '@core/throttler/throttler.module';
 import { ObservabilityModule } from '@obs/logger.module';
 import { StorageModule } from '@storage/storage.module';
-import { StorageService } from '@storage/storage.service';
+import { FileStorage } from '@storage/file-storage';
 
 import { gatewayConfigSchema } from './config/gateway.config';
 import { IDENTITY_CLIENT, MessagingModule } from './messaging/messaging.module';
@@ -19,7 +19,6 @@ import { IDENTITY_CLIENT, MessagingModule } from './messaging/messaging.module';
  */
 import { AuthModule } from './modules/auth/auth.module';
 import { ConversionsModule } from './modules/conversions/conversions.module';
-import { FormatsModule } from './modules/formats/formats.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -32,8 +31,8 @@ import { UsersModule } from './modules/users/users.module';
     // bucket it presigns from.
     HealthModule.register({
       imports: [StorageModule],
-      inject: [IDENTITY_CLIENT, StorageService],
-      useFactory: (identity: ClientProxy, storage: StorageService) => [
+      inject: [IDENTITY_CLIENT, FileStorage],
+      useFactory: (identity: ClientProxy, storage: FileStorage) => [
         brokerProbe(identity),
         storageProbe(storage),
       ],
@@ -51,7 +50,6 @@ import { UsersModule } from './modules/users/users.module';
     AuthModule,
     UsersModule,
     ConversionsModule,
-    FormatsModule,
   ],
 })
 export class AppModule {}

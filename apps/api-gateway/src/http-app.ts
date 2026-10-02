@@ -1,5 +1,6 @@
 import compression from '@fastify/compress';
 import fastifyCookie from '@fastify/cookie';
+import fastifyMultipart from '@fastify/multipart';
 import { ValidationPipe } from '@nestjs/common';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 
@@ -51,5 +52,19 @@ export async function configureHttpApp(
 
   await app.register(fastifyCookie, {
     secret: configService.get('COOKIE_SECRET'),
+  });
+
+  // `POST /api/convert`. Parts are read as streams, on demand, by the
+  // handler — nothing is buffered, and nothing is read at all for a request
+  // the guards refuse. The limits are the edge's: one file, a few short
+  // fields, and a ceiling on the file past which the stream errors.
+  await app.register(fastifyMultipart, {
+    limits: {
+      files: 1,
+      fields: 8,
+      fieldSize: 1024,
+      parts: 10,
+      fileSize: configService.getNumber('CONVERSION_UPLOAD_MAX_BYTES'),
+    },
   });
 }

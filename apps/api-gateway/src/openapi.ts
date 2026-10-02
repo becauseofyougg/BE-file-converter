@@ -59,6 +59,10 @@ export function setupOpenApi(app: NestFastifyApplication): void {
     )
     .addTag('auth', 'Registration, login, sessions')
     .addTag('users', 'Profiles — read, update, erase')
+    .addTag(
+      'convert',
+      'File conversion — CSV, JSON, XML, YAML — and its history',
+    )
     .addTag('admin', 'Administrative surfaces: RBAC and the user directory')
     .addTag('health', 'Liveness and readiness')
     .build();

@@ -14,6 +14,9 @@ set -u
 
 GW=${GATEWAY_URL:-http://localhost:3000}
 MH=${MAILHOG_URL:-http://localhost:8025}
+# Overridable so a second stack, under another project name, can be checked.
+PG=${POSTGRES_CONTAINER:-fc-postgres}
+MQ=${RABBITMQ_CONTAINER:-fc-rabbitmq}
 PASSWORD='a perfectly fine passphrase'
 PASS=0
 FAIL=0
@@ -49,7 +52,7 @@ field() { # JS expression over the last body, bound to `b`
 }
 
 sql() { # database query
-  docker exec fc-postgres sh -c "psql -tA -U \"\$POSTGRES_USER\" -d $1 -c \"$2\""
+  docker exec "$PG" sh -c "psql -tA -U \"\$POSTGRES_USER\" -d $1 -c \"$2\""
 }
 
 mail_code() { # address [subject pattern] -> the 6-digit code in the newest matching mail
@@ -129,6 +132,68 @@ check "GET /admin/users as ADMIN" 200 "$(req GET '/admin/users?limit=5')"
 check "  paginated list returned" yes "$(field "Array.isArray(b.items)?'yes':'no'")"
 check "GET /admin/rbac/roles as ADMIN" 200 "$(req GET /admin/rbac/roles)"
 
+echo "== conversion (docs/CONVERSIONS.md)"
+convert() { # file name target [save] -> status; body in $DIR/body, headers in $DIR/headers
+  curl -s -o "$DIR/body" -D "$DIR/headers" -w '%{http_code}' -b "$JAR" \
+    -F "file=@$1;filename=$2" -F "targetFormat=$3" ${4:+-F "save=$4"} "$GW/api/convert"
+}
+header() { # name -> value from the last response
+  tr -d '\r' < "$DIR/headers" | awk -v name="$(echo "$1" | tr 'A-Z' 'a-z')" -F': ' 'tolower($1) == name {print $2}'
+}
+printf 'id,name\r\n1,Ann\r\n2,"Smith, J"\r\n' > "$DIR/people.csv"
+printf '[{"id":"1","name":"Ann"},{"id":"2","name":"Smith, J"}]' > "$DIR/people.json"
+printf '<people><person><id>1</id><name>Ann</name></person><person><id>2</id><name>Smith, J</name></person></people>' > "$DIR/people.xml"
+printf -- '- id: "1"\n  name: Ann\n- id: "2"\n  name: Smith, J\n' > "$DIR/people.yaml"
+
+check "GET /api/convert/formats" 200 "$(req GET /api/convert/formats)"
+check "  four sources, three targets each" "csv:json,xml,yaml|json:csv,xml,yaml|xml:csv,json,yaml|yaml:csv,json,xml" \
+  "$(field "b.map(e=>e.source+':'+e.target.join(',')).join('|')")"
+check "POST /api/convert without a session" 401 "$(curl -s -o /dev/null -w '%{http_code}' -F "file=@$DIR/people.csv" -F targetFormat=json "$GW/api/convert")"
+
+for source in csv json xml yaml; do
+  for target in csv json xml yaml; do
+    [ "$source" = "$target" ] && continue
+    status=$(convert "$DIR/people.$source" "people.$source" "$target")
+    # Converted back to JSON, every route must give the same two records.
+    cp "$DIR/body" "$DIR/result.$target"
+    back=$([ "$target" = json ] && cat "$DIR/body" || { convert "$DIR/result.$target" "result.$target" json > /dev/null; cat "$DIR/body"; })
+    records=$(echo "$back" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{let v=JSON.parse(d);while(v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===1)v=Object.values(v)[0];console.log(JSON.stringify(v))})" 2> /dev/null)
+    check "$source → $target" '200|[{"id":"1","name":"Ann"},{"id":"2","name":"Smith, J"}]' "$status|$records"
+  done
+done
+
+convert "$DIR/people.csv" people.csv json > /dev/null
+check "  served as an attachment named converted.json" 'attachment; filename="converted.json"' "$(header content-disposition)"
+check "  with the target's type" "application/json; charset=utf-8" "$(header content-type)"
+check "  and the history id" yes "$(header x-conversion-id | grep -Eq '^[0-9a-f-]{36}$' && echo yes || echo no)"
+UNSAVED_ID=$(header x-conversion-id)
+
+printf 'id,name\r\n1,Ann\r\n' > "$DIR/people.txt"
+check "an unrecognised format is 415" "415|UNSUPPORTED_FORMAT" "$(convert "$DIR/people.txt" people.txt json)|$(field b.code)"
+check "an unknown target is 400" "400|UNSUPPORTED_CONVERSION" "$(convert "$DIR/people.csv" people.csv toml)|$(field b.code)"
+check "a file that does not parse is 400" "400|INVALID_SOURCE" "$(printf '{"a":' > "$DIR/bad.json"; convert "$DIR/bad.json" bad.json csv)|$(field b.code)"
+check "an XML external entity is refused" "400|INVALID_SOURCE" "$(printf '<!DOCTYPE a [<!ENTITY x SYSTEM "file:///etc/passwd">]><a>&x;</a>' > "$DIR/xxe.xml"; convert "$DIR/xxe.xml" xxe.xml json)|$(field b.code)"
+node -e "require('fs').writeFileSync('$DIR/big.json', '[' + '1,'.repeat(5_600_000) + '1]')"
+check "over the format's limit is 413" "413|FILE_TOO_LARGE" "$(convert "$DIR/big.json" big.json csv)|$(field b.code)"
+
+check "save=true" 200 "$(convert "$DIR/people.yaml" people.yaml xml true)"
+SAVED_ID=$(header x-conversion-id)
+cp "$DIR/body" "$DIR/saved.xml"
+check "GET /api/convert/history" 200 "$(req GET '/api/convert/history?limit=100')"
+check "  every attempt recorded, failures included" yes "$(field "b.items.length>=18&&b.items.some(i=>i.status==='FAILED')?'yes':'no'")"
+check "  the saved one is downloadable, the unsaved one not" "true|false" \
+  "$(field "[b.items.find(i=>i.id==='$SAVED_ID').resultAvailable,b.items.find(i=>i.id==='$UNSAVED_ID').resultAvailable].join('|')")"
+check "GET …/history/:id/download" 200 "$(curl -s -o "$DIR/download.xml" -w '%{http_code}' -b "$JAR" "$GW/api/convert/history/$SAVED_ID/download")"
+check "  the same bytes as the original response" yes "$(cmp -s "$DIR/saved.xml" "$DIR/download.xml" && echo yes || echo no)"
+check "  an unsaved result is not offered" "404|RESULT_NOT_SAVED" "$(req GET "/api/convert/history/$UNSAVED_ID/download")|$(field b.code)"
+check "  another user's id is just not found" 404 "$(req GET /api/convert/history/00000000-0000-4000-8000-000000000000)"
+check "operations recorded with checksums, no content" yes \
+  "$(sql conversion "SELECT CASE WHEN count(*) >= 18 AND bool_and(source_checksum IS NULL OR length(source_checksum) = 64) THEN 'yes' ELSE 'no' END FROM conversion_operations WHERE user_id = '$USER_ID'")"
+check "nothing left unacknowledged on conversion.rpc" 0 "$(docker exec "$MQ" rabbitmqctl list_queues name messages_unacknowledged 2> /dev/null | awk '$1 == "conversion.rpc" {print $2}')"
+if [ "$(docker compose exec -T api-gateway printenv STORAGE_DRIVER | tr -d '\r')" = local ]; then
+  check "no upload left behind (local storage)" 0 "$(docker compose exec -T api-gateway sh -c "ls /var/lib/file-converter/storage/uploads/$USER_ID 2> /dev/null | wc -l" | tr -d ' \r')"
+fi
+
 echo "== logout"
 check "POST /auth/logout" 204 "$(req POST /auth/logout)"
 check "  cookies cleared, profile refused" 401 "$(req GET "/users/$USER_ID")"
@@ -173,7 +238,7 @@ echo "== hardening"
 LONG_ID=$(printf 'a%.0s' $(seq 1 100))
 check "an over-long x-correlation-id is not a 5xx" yes "$(s=$(curl -s -m 15 -o /dev/null -w '%{http_code}' -H "x-correlation-id: $LONG_ID" -H 'content-type: application/json' --data '{"email":"probe@example.com","password":"a perfectly fine passphrase"}' "$GW/auth/login"); [ "$s" -lt 500 ] && echo yes || echo "no ($s)")"
 check "  identity still answers the next request" yes "$(s=$(curl -s -m 15 -o /dev/null -w '%{http_code}' -H 'content-type: application/json' --data '{"email":"probe2@example.com","password":"a perfectly fine passphrase"}' "$GW/auth/login"); [ "$s" -lt 500 ] && echo yes || echo "no ($s)")"
-check "  nothing left unacknowledged on identity.rpc" 0 "$(docker exec fc-rabbitmq rabbitmqctl list_queues name messages_unacknowledged 2> /dev/null | awk '$1 == "identity.rpc" {print $2}')"
+check "  nothing left unacknowledged on identity.rpc" 0 "$(docker exec "$MQ" rabbitmqctl list_queues name messages_unacknowledged 2> /dev/null | awk '$1 == "identity.rpc" {print $2}')"
 BRUTE="brute-$(date +%s)@example.com"
 ATTEMPTS=$(for i in $(seq 1 6); do curl -s -o /dev/null -w '%{http_code} ' -H 'content-type: application/json' --data "{\"email\":\"$BRUTE\",\"password\":\"wrong guess number $i\"}" "$GW/auth/login"; done)
 check "the sixth wrong password on one address is throttled" 429 "$(echo "$ATTEMPTS" | awk '{print $6}')"

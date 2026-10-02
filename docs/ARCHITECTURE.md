@@ -161,6 +161,13 @@ not block a 200 ms thumbnail resize, and the image worker's container does not s
 
 ## 5. The conversion pipeline
 
+> **Implemented so far: the synchronous path**, for the data family (CSV/JSON/XML/YAML). See
+> [CONVERSIONS.md](CONVERSIONS.md). The gateway asks over `conversion.rpc` and waits, the
+> conversion runs on its own worker thread, and every attempt is a `conversion_operations` row.
+> The registry in §5.3 exists as the abstract `FileConverter` plus `ConverterRegistry`, which
+> discovers its modules through Nest's `DiscoveryService`. The queued job pipeline below
+> (§5.1, §5.2) is still to be built, for the heavy families.
+
 ### 5.1 Job state machine
 
 ```
@@ -224,7 +231,10 @@ end, then add a heavyweight engine (LibreOffice or ffmpeg) to prove the family-q
 
 ## 6. Storage
 
-MinIO locally, any S3-compatible service in production; one `libs/storage` client either way.
+MinIO locally, any S3-compatible service in production. **Or a local directory.** `libs/storage`
+exposes the abstract `FileStorage` with an S3 and a local implementation, chosen by
+`STORAGE_DRIVER`, and every stored file records the driver it went to
+([CONVERSIONS.md §6](CONVERSIONS.md#6-streaming-threads-and-storage)).
 
 - Buckets: `uploads/` (sources) and `results/`, both private — **no object is ever publicly readable.**
 - Keys: `<bucket>/<userId>/<jobId>[.ext]` — the user id in the path makes ownership checks cheap and
@@ -254,7 +264,9 @@ last_login_at) ·
 There is deliberately **no** `refresh_tokens` table: refresh state may not be stored on the server
 ([AUTHORIZATION.md §1](AUTHORIZATION.md)), so the refresh token is a self-contained JWT.
 
-**conversion DB** — `conversion_jobs` (id, user_id, status, source_format, target_format, options
+**conversion DB** — today: `conversion_operations`, the history of synchronous conversions
+(formats, sizes, SHA-256 checksums, outcome, duration, result key while it is kept; never content)
+([CONVERSIONS.md §9](CONVERSIONS.md#9-audit-and-history)). Planned for the queued path: `conversion_jobs` (id, user_id, status, source_format, target_format, options
 `jsonb`, source_key, source_size, result_key, result_size, checksum, error_code, error_message,
 attempts, started_at, finished_at, expires_at, created_at, updated_at) · `job_events` (id, job_id,
 status, payload `jsonb`, created_at) · `outbox`.
@@ -284,7 +296,9 @@ Token tables store **hashes**, never the raw token.
 | `POST` | `/users/:userId/email-change` · `.../confirm` | self-service address change, proved by code or link |
 | `DELETE` | `/users/:userId` · `POST .../deletion/confirm` | erasure by anonymisation; self must prove their address |
 | `GET` | `/admin/users` | cursor-paginated directory, `users@list` only |
-| `GET` | `/formats` | conversion matrix, derived from the registry |
+| `POST` | `/api/convert` | **implemented**: multipart file + `targetFormat` + `save` → `200` with the converted file ([CONVERSIONS.md](CONVERSIONS.md)) |
+| `GET` | `/api/convert/formats` · `/api/convert/history[/:id[/download]]` | **implemented**: the matrix from the registry; own history; saved results |
+| `GET` | `/formats` | (planned, queued path) conversion matrix, derived from the registry |
 | `POST` | `/conversions` | multipart: file + `targetFormat` + options → **`202` `{ jobId }`** |
 | `GET` | `/conversions` | own jobs, paginated, filter by status |
 | `GET` | `/conversions/:id` | status, progress, error |

@@ -31,3 +31,6 @@ process.env.S3_ACCESS_KEY = 'test';
 process.env.S3_SECRET_KEY = 'test-secret';
 process.env.S3_BUCKET_UPLOADS = 'uploads';
 process.env.S3_BUCKET_RESULTS = 'results';
+
+// Small, so the convert suite can cross it without generating megabytes.
+process.env.CONVERSION_UPLOAD_MAX_BYTES = '65536';
