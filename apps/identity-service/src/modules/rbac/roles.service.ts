@@ -163,7 +163,10 @@ export class RolesService {
   }
 
   private async assertNameFree(name: string): Promise<void> {
-    const clash = await this.db.role.findUnique({ where: { name } });
+    const clash = await this.db.role.findUnique({
+      where: { name },
+      select: { id: true },
+    });
 
     if (clash) {
       throw new AppError(

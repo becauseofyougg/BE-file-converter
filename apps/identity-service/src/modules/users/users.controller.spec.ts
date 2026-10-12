@@ -31,6 +31,7 @@ describe('identity UsersController', () => {
     message = { fields: { deliveryTag: 1 } };
     profiles = {
       getProfile: jest.fn().mockResolvedValue({ id: TARGET }),
+      getStatus: jest.fn().mockResolvedValue({ userId: TARGET, active: true }),
     } as unknown as jest.Mocked<ProfileService>;
 
     updates = {
@@ -64,6 +65,15 @@ describe('identity UsersController', () => {
       deletion,
       list,
     );
+  });
+
+  it('dispatches a status read, and acks', async () => {
+    await expect(
+      controller.getStatus({ userId: TARGET, correlationId: 'c' }, context),
+    ).resolves.toEqual({ userId: TARGET, active: true });
+
+    expect(profiles.getStatus).toHaveBeenCalledWith(TARGET);
+    expect(ack).toHaveBeenCalledWith(message);
   });
 
   it('dispatches a profile read', async () => {

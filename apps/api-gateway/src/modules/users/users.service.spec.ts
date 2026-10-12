@@ -2,7 +2,7 @@ import type { ClientProxy } from '@nestjs/microservices';
 import { of, throwError } from 'rxjs';
 
 import { USERS_PATTERNS } from '@contracts/messages/users.messages';
-import type { StorageService } from '@storage/storage.service';
+import type { FileStorage } from '@storage/file-storage';
 
 import { PROFILE_PHOTO_BUCKET, UsersService } from './users.service';
 
@@ -21,7 +21,7 @@ describe('gateway UsersService', () => {
       { send } as unknown as ClientProxy,
       {
         presignGet,
-      } as unknown as StorageService,
+      } as unknown as FileStorage,
     );
     jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
   });

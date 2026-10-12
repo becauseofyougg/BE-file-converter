@@ -24,6 +24,12 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist/apps/api-gateway ./dist
 COPY --from=build /app/package.json ./
 
+# Where STORAGE_DRIVER=local keeps files. Created here, owned by `node`, so a
+# fresh named volume mounted on it starts with that owner — Docker copies the
+# image's directory into an empty volume — instead of root's.
+RUN mkdir -p /var/lib/file-converter/storage \
+    && chown -R node:node /var/lib/file-converter
+
 # Never root: this process is the one exposed to the internet.
 USER node
 

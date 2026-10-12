@@ -12,7 +12,7 @@ import {
   rabbitmqConfigSchema,
   throttlerConfigSchema,
 } from '@core/config';
-import { S3Config, s3ConfigSchema } from '@storage/storage.config';
+import { StorageConfig, storageConfigSchema } from '@storage/storage.config';
 
 /**
  * The gateway owns no domain data, so it declares no database variables — it
@@ -27,7 +27,22 @@ export interface GatewayConfig
     JwtVerifyConfig,
     ThrottlerConfig,
     RabbitMQConfig,
-    S3Config {}
+    StorageConfig {
+  /**
+   * The largest upload `POST /api/convert` reads, whatever the format — the
+   * edge's own ceiling. The per-format limits are conversion-service's, and
+   * lower; this one stops a client streaming gigabytes at the gateway before
+   * anyone has looked at what they are.
+   */
+  CONVERSION_UPLOAD_MAX_BYTES?: number;
+
+  /**
+   * How long the gateway waits for a conversion. Longer than the service's
+   * own limit (`CONVERSION_SYNC_TIMEOUT_MS`, 30 s), so the client gets that
+   * limit's 422 rather than a 504 racing it.
+   */
+  CONVERSION_RPC_TIMEOUT_MS?: number;
+}
 
 export const gatewayConfigSchema = Joi.object<GatewayConfig>({
   ...baseConfigSchema,
@@ -35,5 +50,16 @@ export const gatewayConfigSchema = Joi.object<GatewayConfig>({
   ...jwtVerifyConfigSchema,
   ...throttlerConfigSchema,
   ...rabbitmqConfigSchema,
-  ...s3ConfigSchema,
+  ...storageConfigSchema,
+
+  CONVERSION_UPLOAD_MAX_BYTES: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .default(50 * 1024 * 1024),
+  CONVERSION_RPC_TIMEOUT_MS: Joi.number()
+    .integer()
+    .min(1000)
+    .optional()
+    .default(45_000),
 });

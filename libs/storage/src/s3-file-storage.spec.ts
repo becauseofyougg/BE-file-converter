@@ -1,7 +1,16 @@
 const getSignedUrl = jest.fn();
+const uploadDone = jest.fn();
+const Upload = jest.fn();
 
 jest.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: (...args: unknown[]) => getSignedUrl(...args),
+}));
+
+jest.mock('@aws-sdk/lib-storage', () => ({
+  Upload: function (options: unknown) {
+    Upload(options);
+    return { done: () => uploadDone() as Promise<unknown> };
+  },
 }));
 
 import {
@@ -15,7 +24,8 @@ import { Readable } from 'node:stream';
 
 import { ConfigService } from '@core/config/config.service';
 
-import { StorageService } from './storage.service';
+import { ObjectNotFoundError } from './file-storage';
+import { S3FileStorage } from './s3-file-storage';
 
 const CONFIG: Record<string, string> = {
   S3_BUCKET_UPLOADS: 'uploads-bucket',
@@ -23,9 +33,9 @@ const CONFIG: Record<string, string> = {
   S3_PRESIGN_TTL: '300',
 };
 
-describe('StorageService', () => {
+describe('S3FileStorage', () => {
   let client: { send: jest.Mock };
-  let service: StorageService;
+  let service: S3FileStorage;
 
   /** The command instance the service handed to the client, by position. */
   const commandAt = (index: number) =>
@@ -39,7 +49,7 @@ describe('StorageService', () => {
     getSignedUrl.mockReset().mockResolvedValue('https://signed.example/object');
     client = { send: jest.fn().mockResolvedValue({}) };
 
-    service = new StorageService(
+    service = new S3FileStorage(
       client as unknown as S3Client,
       {
         get: (key: string) => CONFIG[key],
@@ -97,6 +107,92 @@ describe('StorageService', () => {
 
       await expect(service.getStream('results', 'a/b')).resolves.toBe(body);
     });
+
+    /** A missing object is a 404 to the caller, not a storage outage. */
+    it.each([
+      ['NoSuchKey', { name: 'NoSuchKey' }],
+      ['a bare 404', { name: 'Unknown', $metadata: { httpStatusCode: 404 } }],
+    ])('turns %s into ObjectNotFoundError', async (_label, failure) => {
+      client.send.mockRejectedValue(Object.assign(new Error('gone'), failure));
+
+      await expect(service.getStream('results', 'a/b')).rejects.toBeInstanceOf(
+        ObjectNotFoundError,
+      );
+    });
+
+    it('lets any other failure through as it is', async () => {
+      client.send.mockRejectedValue(new Error('connection refused'));
+
+      await expect(service.getStream('results', 'a/b')).rejects.toThrow(
+        'connection refused',
+      );
+    });
+  });
+
+  /**
+   * An upload still arriving has no known length, and PutObject needs one.
+   * The multipart Upload helper takes the stream in parts instead.
+   */
+  describe('put with a stream of unknown length', () => {
+    beforeEach(() => {
+      Upload.mockReset();
+      uploadDone.mockReset().mockResolvedValue({});
+    });
+
+    /**
+     * S3 wants a length before a PutObject, and an upload still arriving has
+     * none. The multipart Upload helper takes the stream in parts instead.
+     */
+    it('goes through the multipart Upload helper', async () => {
+      const body = Readable.from([Buffer.from('a,b\n1,2\n')]);
+
+      await service.put({
+        bucket: 'uploads',
+        key: 'user-1/op-1',
+        body,
+        contentType: 'text/csv',
+      });
+
+      expect(Upload).toHaveBeenCalledWith({
+        client,
+        params: {
+          Bucket: 'uploads-bucket',
+          Key: 'user-1/op-1',
+          Body: body,
+          ContentType: 'text/csv',
+        },
+      });
+      expect(uploadDone).toHaveBeenCalled();
+      expect(client.send).not.toHaveBeenCalled();
+    });
+
+    it('fails when the upload does', async () => {
+      uploadDone.mockRejectedValue(new Error('part rejected'));
+
+      await expect(
+        service.put({
+          bucket: 'uploads',
+          key: 'user-1/op-1',
+          body: Readable.from(['x']),
+        }),
+      ).rejects.toThrow('part rejected');
+    });
+
+    it('still uses a single PutObject when the length is known', async () => {
+      await service.put({
+        bucket: 'uploads',
+        key: 'user-1/op-1',
+        body: Readable.from(['x']),
+        contentLength: 1,
+      });
+
+      expect(Upload).not.toHaveBeenCalled();
+      expect(commandAt(0)).toBeInstanceOf(PutObjectCommand);
+    });
+  });
+
+  it('calls itself s3, which is what the operation row records', () => {
+    expect(service.driver).toBe('s3');
   });
 
   describe('presignGet', () => {

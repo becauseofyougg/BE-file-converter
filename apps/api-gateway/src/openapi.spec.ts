@@ -67,6 +67,7 @@ describe('setupOpenApi', () => {
     expect(config().tags?.map((tag) => tag.name)).toEqual([
       'auth',
       'users',
+      'convert',
       'admin',
       'health',
     ]);

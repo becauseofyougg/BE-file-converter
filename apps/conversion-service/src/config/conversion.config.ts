@@ -9,10 +9,10 @@ import {
   rabbitmqConfigSchema,
 } from '@core/config';
 import { FormatFamily } from '@contracts/enums/conversion.enums';
-import { S3Config, s3ConfigSchema } from '@storage/storage.config';
+import { StorageConfig, storageConfigSchema } from '@storage/storage.config';
 
 export interface ConversionConfig
-  extends BaseConfig, DatabaseConfig, RabbitMQConfig, S3Config {
+  extends BaseConfig, DatabaseConfig, RabbitMQConfig, StorageConfig {
   /**
    * Which family this replica consumes. It decides the queue the worker binds
    * to *and* which binaries its image has to ship — an `image` deployment does
@@ -28,13 +28,72 @@ export interface ConversionConfig
 
   /** Result retention before the cleanup job marks the job EXPIRED. */
   CONVERSION_RESULT_TTL_HOURS?: number;
+
+  /** Synchronous conversions (`conversion.rpc`) handled at once by a replica. */
+  CONVERSION_RPC_CONCURRENCY?: number;
+
+  /** A synchronous conversion is abandoned after this, with a 422. */
+  CONVERSION_SYNC_TIMEOUT_MS?: number;
+
+  /**
+   * Largest source accepted, in bytes, for a format with no limit of its own.
+   * A format gets its own as `CONVERSION_MAX_BYTES_<FORMAT>` —
+   * `CONVERSION_MAX_BYTES_XML=2097152` — read by `ConversionLimits`.
+   */
+  CONVERSION_MAX_BYTES_DEFAULT?: number;
+
+  /** Deepest nesting of objects and lists a data file may have. */
+  CONVERSION_MAX_DEPTH?: number;
+
+  /** Heap a conversion's worker thread may use before it is stopped. */
+  CONVERSION_WORKER_MEMORY_MB?: number;
+
+  /**
+   * How long a result nobody asked to save is kept, so the gateway can stream
+   * it, before the cleanup job deletes it.
+   */
+  CONVERSION_UNSAVED_RESULT_MINUTES?: number;
+
+  /**
+   * The largest image, in pixels per side, a conversion may produce — what an
+   * SVG is rasterised to, whether asked for or its own size.
+   */
+  IMAGE_MAX_WIDTH?: number;
+  IMAGE_MAX_HEIGHT?: number;
+
+  /**
+   * The most pixels an image may have, read or produced. Checked from the
+   * header before anything is decoded: the defence against a few kilobytes of
+   * PNG that unpack to gigabytes (a decompression bomb).
+   */
+  IMAGE_MAX_PIXELS?: number;
+
+  /**
+   * How long the transformation history is kept, in days — the record and a
+   * saved result alike. Set by whoever runs the service.
+   */
+  HISTORY_RETENTION_DAYS?: number;
+
+  /**
+   * The largest result kept with `save=true`. A larger one is still returned
+   * to the client, just not kept — docs/SAVED-RESULTS.md.
+   */
+  CONVERSION_MAX_SAVED_BYTES?: number;
+}
+
+/** `CONVERSION_MAX_BYTES_CSV`, `CONVERSION_MAX_BYTES_YAML`, … */
+export const PER_FORMAT_LIMIT_PATTERN =
+  /^CONVERSION_MAX_BYTES_(?!DEFAULT$)[A-Z0-9]+$/;
+
+export function perFormatLimitKey(format: string): string {
+  return `CONVERSION_MAX_BYTES_${format.toUpperCase()}`;
 }
 
 export const conversionConfigSchema = Joi.object<ConversionConfig>({
   ...baseConfigSchema,
   ...databaseConfigSchema,
   ...rabbitmqConfigSchema,
-  ...s3ConfigSchema,
+  ...storageConfigSchema,
 
   CONVERSION_FAMILY: Joi.string()
     .valid(...Object.values(FormatFamily))
@@ -44,4 +103,48 @@ export const conversionConfigSchema = Joi.object<ConversionConfig>({
     .optional()
     .default(100 * 1024 * 1024),
   CONVERSION_RESULT_TTL_HOURS: Joi.number().optional().default(24),
-});
+
+  CONVERSION_RPC_CONCURRENCY: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .default(4),
+  CONVERSION_SYNC_TIMEOUT_MS: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .default(30_000),
+  CONVERSION_MAX_BYTES_DEFAULT: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .default(10 * 1024 * 1024),
+  CONVERSION_MAX_DEPTH: Joi.number().integer().min(1).optional().default(64),
+  CONVERSION_WORKER_MEMORY_MB: Joi.number()
+    .integer()
+    .min(16)
+    .optional()
+    .default(256),
+  CONVERSION_UNSAVED_RESULT_MINUTES: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .default(15),
+
+  IMAGE_MAX_WIDTH: Joi.number().integer().min(1).optional().default(8192),
+  IMAGE_MAX_HEIGHT: Joi.number().integer().min(1).optional().default(8192),
+  IMAGE_MAX_PIXELS: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .default(40_000_000),
+  CONVERSION_MAX_SAVED_BYTES: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .default(50 * 1024 * 1024),
+  HISTORY_RETENTION_DAYS: Joi.number().integer().min(1).optional().default(90),
+})
+  // Per-format limits are named by the format, so they cannot be listed here;
+  // they are still checked, so `CONVERSION_MAX_BYTES_CSV=10mb` fails the boot.
+  .pattern(PER_FORMAT_LIMIT_PATTERN, Joi.number().integer().min(1));
