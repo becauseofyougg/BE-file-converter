@@ -48,6 +48,10 @@ export const ERROR_CODES = {
   /** 415: the file's format is not one any converter reads. */
   UNSUPPORTED_FORMAT: 'UNSUPPORTED_FORMAT',
   INVALID_SOURCE: 'INVALID_SOURCE',
+  /** 400: active or external content — a script, a remote reference — in a source. */
+  UNSAFE_SOURCE: 'UNSAFE_SOURCE',
+  /** 400: an image whose pixel dimensions, read or requested, are over the limits. */
+  IMAGE_TOO_LARGE: 'IMAGE_TOO_LARGE',
   /** 404: the operation exists, but its result was never kept, or is gone. */
   RESULT_NOT_SAVED: 'RESULT_NOT_SAVED',
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',
@@ -79,5 +83,7 @@ export const PERMANENT_ERROR_CODES: readonly string[] = [
   ERROR_CODES.UNSUPPORTED_CONVERSION,
   ERROR_CODES.UNSUPPORTED_FORMAT,
   ERROR_CODES.INVALID_SOURCE,
+  ERROR_CODES.UNSAFE_SOURCE,
+  ERROR_CODES.IMAGE_TOO_LARGE,
   ERROR_CODES.FILE_TOO_LARGE,
 ];

@@ -4,17 +4,19 @@ import { FormatFamily } from '@contracts/enums/conversion.enums';
 import { ConverterRegistry } from './converter-registry';
 import {
   type ConversionOutput,
+  type DetectedFormat,
+  DETECTION,
   FileConverter,
   type FormatDescriptor,
 } from './file-converter';
 
 class FakeConverter extends FileConverter {
-  readonly family = FormatFamily.DATA;
-
   constructor(
     readonly id: string,
     private readonly graph: Record<string, string[]>,
-    private readonly extension: string,
+    /** What `detect` answers, whatever it is asked. */
+    private readonly answer: DetectedFormat | null,
+    readonly family: FormatFamily = FormatFamily.DATA,
   ) {
     super();
   }
@@ -36,10 +38,8 @@ class FakeConverter extends FileConverter {
     return known.has(format) ? this.descriptorOf(format) : undefined;
   }
 
-  detect(fileName: string): string | null {
-    return fileName.endsWith(this.extension)
-      ? Object.keys(this.graph)[0]
-      : null;
+  detect(): DetectedFormat | null {
+    return this.answer;
   }
 
   convert(): Promise<ConversionOutput> {
@@ -54,13 +54,14 @@ class FakeConverter extends FileConverter {
 describe('ConverterRegistry', () => {
   const data = new FakeConverter(
     'data',
-    { csv: ['json', 'yaml'], json: ['csv'] },
-    '.csv',
+    { csv: ['json', 'xml'], json: ['csv'], xml: ['csv'] },
+    { format: 'xml', confidence: DETECTION.CONTENT },
   );
-  const sheets = new FakeConverter(
-    'sheets',
-    { csv: ['xlsx'], xlsx: ['csv'] },
-    '.xlsx',
+  const image = new FakeConverter(
+    'image',
+    { png: ['jpeg'], svg: ['png'] },
+    { format: 'svg', confidence: DETECTION.CONTENT_SPECIFIC },
+    FormatFamily.IMAGE,
   );
 
   const registryWith = (...converters: FileConverter[]) => {
@@ -78,7 +79,7 @@ describe('ConverterRegistry', () => {
         { instance: data },
         { instance: {} },
         { instance: null },
-        { instance: sheets },
+        { instance: image },
       ],
     } as unknown as DiscoveryService;
     const registry = new ConverterRegistry(discovery);
@@ -89,54 +90,98 @@ describe('ConverterRegistry', () => {
     expect(registry.sourceFormats().map((format) => format.id)).toEqual([
       'csv',
       'json',
-      'csv',
-      'xlsx',
+      'xml',
+      'png',
+      'svg',
     ]);
   });
 
   it('refuses two modules with the same id', () => {
     expect(() =>
-      registryWith(data, new FakeConverter('data', {}, '.x')),
+      registryWith(data, new FakeConverter('data', {}, null)),
     ).toThrow(/both called "data"/);
   });
 
   it('merges every module into one sorted list of directions', () => {
-    expect(registryWith(sheets, data).formats()).toEqual([
-      { source: 'csv', target: ['json', 'xlsx', 'yaml'] },
+    expect(registryWith(image, data).formats()).toEqual([
+      { source: 'csv', target: ['json', 'xml'] },
       { source: 'json', target: ['csv'] },
-      { source: 'xlsx', target: ['csv'] },
+      { source: 'png', target: ['jpeg'] },
+      { source: 'svg', target: ['png'] },
+      { source: 'xml', target: ['csv'] },
     ]);
   });
 
-  it('knows every target any module writes', () => {
-    expect(registryWith(data, sheets).knownTargets()).toEqual([
+  it("narrows the directions to one family's", () => {
+    expect(registryWith(data, image).formats(FormatFamily.IMAGE)).toEqual([
+      { source: 'png', target: ['jpeg'] },
+      { source: 'svg', target: ['png'] },
+    ]);
+  });
+
+  it('knows every format named anywhere, read or written', () => {
+    const registry = registryWith(data, image);
+
+    expect(registry.knownFormats()).toEqual([
       'csv',
+      'jpeg',
       'json',
-      'xlsx',
-      'yaml',
+      'png',
+      'svg',
+      'xml',
+    ]);
+    expect(registry.knownFormats(FormatFamily.IMAGE)).toEqual([
+      'jpeg',
+      'png',
+      'svg',
     ]);
   });
 
-  it('lets the first module that recognises a file decide', () => {
-    const registry = registryWith(data, sheets);
+  /** An SVG starts with `<` too; the surer answer wins, whoever registered first. */
+  it('takes the surest detection, not the first', () => {
+    expect(registryWith(data, image).detect('x', Buffer.alloc(0))).toBe('svg');
+    expect(registryWith(image, data).detect('x', Buffer.alloc(0))).toBe('svg');
+  });
 
-    expect(registry.detect('a.xlsx', Buffer.alloc(0))).toBe('csv');
-    expect(registry.detect('a.csv', Buffer.alloc(0))).toBe('csv');
-    expect(registry.detect('a.bin', Buffer.alloc(0))).toBeNull();
+  it("asks only one family's modules when told to", () => {
+    const registry = registryWith(data, image);
+
+    expect(registry.detect('x', Buffer.alloc(0), FormatFamily.DATA)).toBe(
+      'xml',
+    );
+  });
+
+  it('gives a tie to the module registered first', () => {
+    const other = new FakeConverter(
+      'other',
+      {},
+      { format: 'other', confidence: DETECTION.CONTENT },
+    );
+
+    expect(registryWith(data, other).detect('x', Buffer.alloc(0))).toBe('xml');
+  });
+
+  it('recognises nothing when no module does', () => {
+    const silent = new FakeConverter('silent', {}, null);
+
+    expect(registryWith(silent).detect('x', Buffer.alloc(0))).toBeNull();
   });
 
   it('describes a format from whichever module knows it', () => {
-    const registry = registryWith(data, sheets);
+    const registry = registryWith(data, image);
 
-    expect(registry.describe('xlsx')?.mimeType).toBe('x/xlsx');
+    expect(registry.describe('jpeg')?.mimeType).toBe('x/jpeg');
     expect(registry.describe('pdf')).toBeUndefined();
   });
 
-  it('routes a pair to the module that supports it', () => {
-    const registry = registryWith(data, sheets);
+  it('routes a pair to the module that supports it, within a family if given', () => {
+    const registry = registryWith(data, image);
 
-    expect(registry.converterFor('csv', 'yaml')).toBe(data);
-    expect(registry.converterFor('csv', 'xlsx')).toBe(sheets);
-    expect(registry.converterFor('yaml', 'csv')).toBeUndefined();
+    expect(registry.converterFor('csv', 'json')).toBe(data);
+    expect(registry.converterFor('svg', 'png')).toBe(image);
+    expect(
+      registry.converterFor('csv', 'json', FormatFamily.IMAGE),
+    ).toBeUndefined();
+    expect(registry.converterFor('png', 'svg')).toBeUndefined();
   });
 });

@@ -13,7 +13,7 @@ import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { FileStorage } from '@storage/file-storage';
 import type { StorageResolver } from '@storage/storage-resolver';
 import type { GatewayConfig } from '../../config/gateway.config';
-import { ConversionsService, parseFields } from './conversions.service';
+import { ConversionsService } from './conversions.service';
 
 const USER = '0b6c3c6e-55d4-4f5e-8f2a-6a4c1d2e3f40';
 
@@ -241,6 +241,46 @@ describe('ConversionsService', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  it("caches each family's formats apart from the whole list", async () => {
+    send.mockReturnValue(of([]));
+
+    await service.formats('a');
+    await service.formats('b', 'image');
+    await service.formats('c', 'image');
+
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenLastCalledWith(CONVERSION_RPC_PATTERNS.FORMATS, {
+      family: 'image',
+      correlationId: 'b',
+    });
+  });
+
+  it("sends a route's family and the options it read", async () => {
+    send.mockReturnValue(of({ operation: {}, result: RESULT }));
+
+    await service.convert(
+      requestWith({ targetFormat: 'jpeg', quality: '70' }),
+      USER,
+      'c',
+      { family: 'image', flatOptions: ['quality'] },
+    );
+
+    expect(send.mock.calls[0][1]).toMatchObject({
+      targetFormat: 'jpeg',
+      options: { quality: 70 },
+      family: 'image',
+    });
+  });
+
+  it('sends neither when there are none', async () => {
+    send.mockReturnValue(of({ operation: {}, result: RESULT }));
+
+    await service.convert(requestWith({ targetFormat: 'json' }), USER, 'c');
+
+    expect(send.mock.calls[0][1]).not.toHaveProperty('options');
+    expect(send.mock.calls[0][1]).not.toHaveProperty('family');
+  });
+
   it('forwards the history requests', async () => {
     send.mockReturnValue(of('answer'));
 
@@ -266,48 +306,5 @@ describe('ConversionsService', () => {
       operationId: 'op',
     });
     expect(download).toMatchObject({ file: RESULT, operationId: 'op' });
-  });
-});
-
-describe('parseFields', () => {
-  it('normalises the target and reads save', () => {
-    expect(parseFields({ targetFormat: ' YAML ' })).toEqual({
-      targetFormat: 'yaml',
-      save: false,
-    });
-    expect(parseFields({ targetFormat: 'xml', save: 'TRUE' })).toEqual({
-      targetFormat: 'xml',
-      save: true,
-    });
-    expect(parseFields({ targetFormat: 'xml', save: '0' }).save).toBe(false);
-  });
-
-  const failure = (fields: Record<string, string>) => {
-    try {
-      parseFields(fields);
-    } catch (error) {
-      return error as AppError;
-    }
-
-    throw new Error('expected a refusal');
-  };
-
-  it('refuses a missing or malformed target', () => {
-    expect(failure({}).code).toBe(ERROR_CODES.VALIDATION_FAILED);
-    expect(failure({ targetFormat: '../json' }).details).toEqual([
-      'targetFormat must be a format name, such as "json"',
-    ]);
-  });
-
-  it('refuses a save that is not a boolean', () => {
-    expect(failure({ targetFormat: 'json', save: 'yes' }).details).toEqual([
-      'save must be true or false',
-    ]);
-  });
-
-  it('refuses fields it does not know, as the JSON routes do', () => {
-    expect(
-      failure({ targetFormat: 'json', sourceFormat: 'csv' }).details,
-    ).toEqual(['property sourceFormat should not exist']);
   });
 });

@@ -57,6 +57,11 @@ model ConversionOperation {
   /// `STORAGE_DRIVER` does not orphan what an older setting wrote.
   storageDriver String  @map("storage_driver") @db.VarChar(16)
 
+  /// What the conversion was asked to do beyond the formats — `{ quality: 80 }`.
+  /// Null when nothing was. Small and bounded: the RPC refuses more than 16
+  /// keys of short primitives.
+  options Json?
+
   /// The user asked to keep the result.
   saved           Boolean   @default(false)
   /// When an unsaved result is deleted. Null for saved ones.

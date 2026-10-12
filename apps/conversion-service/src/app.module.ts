@@ -20,6 +20,7 @@ import { PrismaService } from './database/prisma.service';
  */
 import { ConvertersModule } from './modules/converters/converters.module';
 import { DataModule } from './modules/data/data.module';
+import { ImageModule } from './modules/image/image.module';
 import { OperationsModule } from './modules/operations/operations.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { WorkerModule } from './modules/worker/worker.module';
@@ -52,6 +53,7 @@ import { WorkerModule } from './modules/worker/worker.module';
     ConvertersModule,
     // Conversion modules — each found by the registry, none listed in it.
     DataModule,
+    ImageModule,
     OperationsModule,
     PipelineModule,
     WorkerModule,

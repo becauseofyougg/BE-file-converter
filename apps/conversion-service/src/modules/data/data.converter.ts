@@ -9,6 +9,8 @@ import type { ConversionConfig } from '../../config/conversion.config';
 import {
   type ConversionInput,
   type ConversionOutput,
+  type DetectedFormat,
+  DETECTION,
   FileConverter,
   type FormatDescriptor,
 } from '../converters/file-converter';
@@ -71,14 +73,14 @@ export class DataConverter extends FileConverter {
    * one, by content, for the formats whose content is unmistakable (JSON,
    * XML); CSV and YAML look like too many things to be guessed.
    */
-  detect(fileName: string, head: Buffer): string | null {
+  detect(fileName: string, head: Buffer): DetectedFormat | null {
     const extension = extname(fileName).toLowerCase();
     const byName = DATA_FORMATS.find((format) =>
       format.extensions.includes(extension),
     );
 
     if (byName) {
-      return byName.id;
+      return { format: byName.id, confidence: DETECTION.EXTENSION };
     }
 
     const text = head
@@ -86,8 +88,13 @@ export class DataConverter extends FileConverter {
       .toString('utf8')
       .replace(LEADING_BOM, '')
       .slice(0, SNIFF_CHARS);
+    const byContent = DATA_FORMATS.find((format) => format.sniff(text));
 
-    return DATA_FORMATS.find((format) => format.sniff(text))?.id ?? null;
+    // Only consistent with the format, never proof: an SVG starts with `<`
+    // too, and the image module's surer answer wins over this one.
+    return byContent
+      ? { format: byContent.id, confidence: DETECTION.CONTENT }
+      : null;
   }
 
   async convert(input: ConversionInput): Promise<ConversionOutput> {

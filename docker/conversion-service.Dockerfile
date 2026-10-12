@@ -26,6 +26,10 @@ RUN npm run prisma:generate:conversion \
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Image conversions (sharp) run on libuv's thread pool, which the file system
+# and DNS share; at the default of 4, four images in flight would leave reading
+# an upload waiting behind them. Twice CONVERSION_RPC_CONCURRENCY.
+ENV UV_THREADPOOL_SIZE=8
 
 # The only image that carries converter binaries, and only the ones its family
 # needs — an `image` replica must not ship LibreOffice. Set at build time:

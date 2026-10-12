@@ -24,6 +24,7 @@ import { RmqAckInterceptor, settleRpc } from '@core/messaging/rmq-ack';
 import { ConverterRegistry } from '../converters/converter-registry';
 import { ConversionOperationsService } from './conversion-operations.service';
 import {
+  ConversionFormatsMessageDto,
   ConversionHistoryMessageDto,
   ConversionOperationMessageDto,
   ConvertFileMessageDto,
@@ -62,8 +63,13 @@ export class ConversionOperationsController {
   }
 
   @MessagePattern(CONVERSION_RPC_PATTERNS.FORMATS)
-  async formats(@Ctx() context: RmqContext): Promise<ConversionFormatEntry[]> {
-    return settleRpc(context, () => Promise.resolve(this.registry.formats()));
+  async formats(
+    @Payload(messageValidationPipe) dto: ConversionFormatsMessageDto,
+    @Ctx() context: RmqContext,
+  ): Promise<ConversionFormatEntry[]> {
+    return settleRpc(context, () =>
+      Promise.resolve(this.registry.formats(dto.family)),
+    );
   }
 
   @MessagePattern(CONVERSION_RPC_PATTERNS.HISTORY_LIST)
