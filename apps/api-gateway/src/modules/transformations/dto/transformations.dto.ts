@@ -112,6 +112,19 @@ export class TransformationUserParamsDto {
   userId: string;
 }
 
+/** A malformed id is a 400, never a lookup. */
+export class TransformationItemParamsDto {
+  @ApiProperty({ format: 'uuid', description: 'The history entry.' })
+  @IsUUID()
+  itemId: string;
+}
+
+export class AdminTransformationItemParamsDto extends TransformationUserParamsDto {
+  @ApiProperty({ format: 'uuid', description: 'The history entry.' })
+  @IsUUID()
+  itemId: string;
+}
+
 /* ---- response shapes, for the OpenAPI document ---- */
 
 export class TransformationHistoryItemDto {
@@ -148,10 +161,13 @@ export class TransformationHistoryItemDto {
   errorCode?: string;
 
   @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
     description:
-      'A saved result can be downloaded: `GET /api/convert/history/{id}/download` (own history only).',
+      'The saved file, while it can be downloaded — `GET …/history/{id}/download`. Null when the result was not saved, or its time has passed.',
   })
-  resultAvailable: boolean;
+  fileId: string | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt: string;

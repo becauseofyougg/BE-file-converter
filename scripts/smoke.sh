@@ -167,6 +167,7 @@ check "  served as an attachment named converted.json" 'attachment; filename="co
 check "  with the target's type" "application/json; charset=utf-8" "$(header content-type)"
 check "  and the history id" yes "$(header x-conversion-id | grep -Eq '^[0-9a-f-]{36}$' && echo yes || echo no)"
 UNSAVED_ID=$(header x-conversion-id)
+check "  and that it was not kept" false "$(header x-result-saved)"
 
 printf 'id,name\r\n1,Ann\r\n' > "$DIR/people.txt"
 check "an unrecognised format is 415" "415|UNSUPPORTED_FORMAT" "$(convert "$DIR/people.txt" people.txt json)|$(field b.code)"
@@ -176,17 +177,24 @@ check "an XML external entity is refused" "400|INVALID_SOURCE" "$(printf '<!DOCT
 node -e "require('fs').writeFileSync('$DIR/big.json', '[' + '1,'.repeat(5_600_000) + '1]')"
 check "over the format's limit is 413" "413|FILE_TOO_LARGE" "$(convert "$DIR/big.json" big.json csv)|$(field b.code)"
 
-check "save=true" 200 "$(convert "$DIR/people.yaml" people.yaml xml true)"
+check "save=true (docs/SAVED-RESULTS.md)" 200 "$(convert "$DIR/people.yaml" people.yaml xml true)"
+check "  the response says it was kept" true "$(header x-result-saved)"
 SAVED_ID=$(header x-conversion-id)
 cp "$DIR/body" "$DIR/saved.xml"
 check "GET /api/transformations/history" 200 "$(req GET '/api/transformations/history?limit=100')"
 check "  every attempt recorded, failures included" yes "$(field "b.items.length>=18&&b.items.some(i=>i.status==='error')?'yes':'no'")"
-check "  the saved one is downloadable, the unsaved one not" "true|false" \
-  "$(field "[b.items.find(i=>i.id==='$SAVED_ID').resultAvailable,b.items.find(i=>i.id==='$UNSAVED_ID').resultAvailable].join('|')")"
-check "GET …/history/:id/download" 200 "$(curl -s -o "$DIR/download.xml" -w '%{http_code}' -b "$JAR" "$GW/api/convert/history/$SAVED_ID/download")"
+check "  the saved one carries a fileId, the unsaved one none" "yes|null" \
+  "$(field "[/^[0-9a-f-]{36}$/.test(b.items.find(i=>i.id==='$SAVED_ID').fileId)?'yes':'no',String(b.items.find(i=>i.id==='$UNSAVED_ID').fileId)].join('|')")"
+SAVED_FILE_ID=$(field "b.items.find(i=>i.id==='$SAVED_ID').fileId")
+check "GET /api/transformations/history/:id/download" 200 "$(curl -s -o "$DIR/download.xml" -D "$DIR/headers" -w '%{http_code}' -b "$JAR" "$GW/api/transformations/history/$SAVED_ID/download")"
 check "  the same bytes as the original response" yes "$(cmp -s "$DIR/saved.xml" "$DIR/download.xml" && echo yes || echo no)"
-check "  an unsaved result is not offered" "404|RESULT_NOT_SAVED" "$(req GET "/api/convert/history/$UNSAVED_ID/download")|$(field b.code)"
-check "  another user's id is just not found" 404 "$(req GET /api/convert/history/00000000-0000-4000-8000-000000000000)"
+check "  named after the upload" 'attachment; filename="people.xml"' "$(header content-disposition)"
+check "  the same file a second time" yes "$(curl -s -b "$JAR" "$GW/api/transformations/history/$SAVED_ID/download" | cmp -s - "$DIR/download.xml" && echo yes || echo no)"
+check "  an unsaved result is not offered" "404|RESULT_NOT_SAVED" "$(req GET "/api/transformations/history/$UNSAVED_ID/download")|$(field b.code)"
+check "  another user's id is just not found" 404 "$(req GET /api/transformations/history/00000000-0000-4000-8000-000000000000/download)"
+check "  the save is audited with its fileId" yes "$(docker compose logs conversion-service 2> /dev/null | grep 'conversion.file.save' | grep -q "\"fileId\":\"$SAVED_FILE_ID\"" && echo yes || echo no)"
+check "  so is the download" yes "$(sleep 1; docker compose logs api-gateway 2> /dev/null | grep 'transformations.file.download' | grep -q "\"fileId\":\"$SAVED_FILE_ID\"" && echo yes || echo no)"
+check "  a saved file expires with the history (90 days)" yes "$(sql conversion "SELECT CASE WHEN result_expires_at BETWEEN finished_at + interval '89 days' AND finished_at + interval '91 days' THEN 'yes' ELSE 'no' END FROM conversion_operations WHERE id = '$SAVED_ID'")"
 check "operations recorded with checksums, no content" yes \
   "$(sql conversion "SELECT CASE WHEN count(*) >= 18 AND bool_and(source_checksum IS NULL OR length(source_checksum) = 64) THEN 'yes' ELSE 'no' END FROM conversion_operations WHERE user_id = '$USER_ID'")"
 check "nothing left unacknowledged on conversion.rpc" 0 "$(docker exec "$MQ" rabbitmqctl list_queues name messages_unacknowledged 2> /dev/null | awk '$1 == "conversion.rpc" {print $2}')"
@@ -242,7 +250,7 @@ check "an SVG wider than allowed" "400|IMAGE_TOO_LARGE" "$(image "$DIR/wide.svg"
 check "a decompression bomb, refused from its header" "400|IMAGE_TOO_LARGE" "$(image "$DIR/bomb.png" bomb.png jpeg)|$(field b.code)"
 check "a CSV sent to the image route is 415" "415|UNSUPPORTED_FORMAT" "$(image "$DIR/people.csv" people.csv png)|$(field b.code)"
 check "image options kept with the operation" '{"width":400}' \
-  "$(req GET "/api/convert/history/$WIDE_ID" > /dev/null; field "JSON.stringify(b.options)")"
+  "$(req GET "/api/transformations/history/$WIDE_ID" > /dev/null; field "JSON.stringify(b.options)")"
 
 echo "== transformation history (docs/TRANSFORMATION-HISTORY.md)"
 history() { req GET "/api/transformations/history$1"; }
@@ -263,6 +271,8 @@ check "the old list is gone" 404 "$(req GET /api/convert/history)"
 check "transformations@read granted to ADMIN by migration" 1 "$(sql identity "SELECT count(*) FROM grants g JOIN roles r ON r.id = g.role_id JOIN permissions p ON p.id = g.permission_id WHERE r.name = 'ADMIN' AND p.name = 'transformations'")"
 check "ADMIN reads another user's history" 200 "$(req GET "/admin/users/$USER_ID/transformations/history?type=image")"
 check "  an unknown user is 404" "404|USER_NOT_FOUND" "$(req GET /admin/users/00000000-0000-4000-8000-000000000000/transformations/history)|$(field b.code)"
+check "ADMIN downloads a user's saved result" yes "$(curl -s -b "$JAR" "$GW/admin/users/$USER_ID/transformations/history/$SAVED_ID/download" | cmp -s - "$DIR/download.xml" && echo yes || echo no)"
+check "the old routes are gone" "404|404" "$(req GET "/api/convert/history/$SAVED_ID")|$(req GET "/api/convert/history/$SAVED_ID/download")"
 
 echo "== logout"
 check "POST /auth/logout" 204 "$(req POST /auth/logout)"
@@ -277,6 +287,7 @@ OLD_EMAIL="smoke2-$(date +%s)@example.com"
 NEW_EMAIL="moved-$(date +%s)@example.com"
 USER2=$(register "$OLD_EMAIL")
 check "a plain user may not read another's history" "403|FORBIDDEN" "$(req GET "/admin/users/$USER_ID/transformations/history")|$(field b.code)"
+check "  nor download another's file, by either route" "403|404" "$(req GET "/admin/users/$USER_ID/transformations/history/$SAVED_ID/download")|$(req GET "/api/transformations/history/$SAVED_ID/download")"
 check "  and the refusal is audited" yes "$(sleep 1; docker compose logs api-gateway 2> /dev/null | grep 'transformations.history.read' | grep -q '"status":403' && echo yes || echo no)"
 check "POST /users/:self/email-change" 200 "$(req POST "/users/$USER2/email-change" "{\"newEmail\":\"$NEW_EMAIL\"}")"
 CHALLENGE=$(field b.challengeId)

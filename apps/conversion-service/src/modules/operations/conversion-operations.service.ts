@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { ConfigService } from '@core/config/config.service';
 import { AppError } from '@core/errors/app-error';
@@ -22,7 +22,11 @@ import type { ConversionConfig } from '../../config/conversion.config';
 import { PrismaService } from '../../database/prisma.service';
 import { ConverterRegistry } from '../converters/converter-registry';
 import { ConversionLimits } from './conversion-limits';
-import { isDownloadable, toOperationRecord } from './operation-record';
+import {
+  downloadName,
+  isDownloadable,
+  toOperationRecord,
+} from './operation-record';
 
 /** Enough of a file to recognise it by content when its name does not say. */
 const HEAD_BYTES = 4096;
@@ -113,13 +117,20 @@ export class ConversionOperationsService {
     return toOperationRecord(await this.ownOperation(request));
   }
 
-  /** Where a saved result is, for the gateway to stream. */
+  /**
+   * Where a saved result is, for the gateway to stream — docs/SAVED-RESULTS.md.
+   *
+   * Asked for by owner and id together, so another user's id is the same
+   * 404 as no id. Then: a conversion with no result, or a result that was
+   * not kept, is 404 `RESULT_NOT_SAVED`; one kept but past its time is 410
+   * `RESULT_EXPIRED` — it existed, and is gone for good.
+   */
   async savedResult(
     request: ConversionOperationRequest,
   ): Promise<ConversionResultFile> {
     const row = await this.ownOperation(request);
 
-    if (!isDownloadable(row)) {
+    if (row.status !== 'COMPLETED' || !row.saved) {
       throw new AppError(
         ERROR_CODES.RESULT_NOT_SAVED,
         row.status === 'COMPLETED'
@@ -129,11 +140,21 @@ export class ConversionOperationsService {
       );
     }
 
+    if (!isDownloadable(row)) {
+      throw new AppError(
+        ERROR_CODES.RESULT_EXPIRED,
+        'This saved result has expired and been deleted',
+        410,
+      );
+    }
+
     return this.resultFile(
       row.resultKey!,
       row.storageDriver,
       row.targetFormat,
       Number(row.resultSize),
+      row.sourceName,
+      row.fileId,
     );
   }
 
@@ -202,7 +223,18 @@ export class ConversionOperationsService {
       request.operationId,
       output.extension,
     );
+    // Kept only if asked for, and only up to the size saved files may be. A
+    // result over it is still returned — the conversion succeeded — just not
+    // kept; the response says which (`X-Result-Saved`).
+    const keep =
+      request.save &&
+      output.data.length <= this.config.getNumber('CONVERSION_MAX_SAVED_BYTES');
+    const fileId = keep ? randomUUID() : null;
+    const storing = Date.now();
 
+    // Written to storage either way: it is where the gateway streams the
+    // response from. Saving is the same write, kept longer — so it adds
+    // nothing to the time the client waits.
     await this.storageCall(() =>
       this.storage.put({
         bucket: 'results',
@@ -215,6 +247,15 @@ export class ConversionOperationsService {
 
     const finishedAt = new Date();
 
+    if (request.save) {
+      this.auditSave(
+        request,
+        fileId,
+        output.data.length,
+        finishedAt.getTime() - storing,
+      );
+    }
+
     try {
       const row = await this.prisma.conversionOperation.update({
         where: { id: request.operationId },
@@ -226,13 +267,9 @@ export class ConversionOperationsService {
           resultSize: BigInt(output.data.length),
           resultChecksum: sha256(output.data),
           resultKey: key,
-          resultExpiresAt: request.save
-            ? null
-            : new Date(
-                finishedAt.getTime() +
-                  this.config.getNumber('CONVERSION_UNSAVED_RESULT_MINUTES') *
-                    60_000,
-              ),
+          saved: keep,
+          fileId,
+          resultExpiresAt: this.resultExpiry(keep, finishedAt),
           durationMs: finishedAt.getTime() - startedAt,
           finishedAt,
         },
@@ -245,6 +282,8 @@ export class ConversionOperationsService {
           this.storage.driver,
           target,
           output.data.length,
+          'converted',
+          fileId,
         ),
       };
     } catch (error) {
@@ -358,11 +397,18 @@ export class ConversionOperationsService {
     );
   }
 
+  /**
+   * `name` is what the file is called on the way out: the conversion's own
+   * response is always `converted.<ext>`, as its spec fixes; a download from
+   * the history is named after the upload (`people.csv` → `people.json`).
+   */
   private resultFile(
     key: string,
     driver: string,
     format: string,
     size: number,
+    name: string,
+    fileId: string | null,
   ): ConversionResultFile {
     const descriptor = this.registry.describe(format);
     const extension = descriptor?.extensions[0]?.slice(1) ?? format;
@@ -372,9 +418,59 @@ export class ConversionOperationsService {
       key,
       driver,
       contentType: descriptor?.mimeType ?? 'application/octet-stream',
-      fileName: `converted.${extension}`,
+      fileName:
+        name === 'converted'
+          ? `converted.${extension}`
+          : downloadName(name, extension),
       size,
+      ...(fileId ? { fileId } : {}),
     };
+  }
+
+  /**
+   * An unsaved result lasts minutes — long enough to be streamed once. A
+   * saved one lasts as long as the history it belongs to.
+   */
+  private resultExpiry(saved: boolean, from: Date): Date {
+    return new Date(
+      from.getTime() +
+        (saved
+          ? this.config.getNumber('HISTORY_RETENTION_DAYS') * 24 * 60 * 60_000
+          : this.config.getNumber('CONVERSION_UNSAVED_RESULT_MINUTES') *
+            60_000),
+    );
+  }
+
+  /**
+   * The save's own audit line: who, which transformation, which file, how
+   * big, how long the write took — or why it was not kept. Never the bytes.
+   */
+  private auditSave(
+    request: ConvertFileRequest,
+    fileId: string | null,
+    size: number,
+    durationMs: number,
+  ): void {
+    const entry = {
+      event: 'conversion.file.save',
+      userId: request.userId,
+      transformationId: request.operationId,
+      fileId,
+      fileSize: size,
+      durationMs,
+      result: fileId ? 'success' : 'failure',
+      ...(fileId
+        ? {}
+        : {
+            reason: `larger than the ${this.config.getNumber('CONVERSION_MAX_SAVED_BYTES')} bytes a saved file may be`,
+          }),
+    };
+
+    if (fileId) {
+      this.logger.log(entry);
+    } else {
+      this.logger.warn(entry);
+    }
   }
 
   private async ownOperation(request: ConversionOperationRequest) {

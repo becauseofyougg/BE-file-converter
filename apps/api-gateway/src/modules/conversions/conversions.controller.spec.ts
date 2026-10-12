@@ -25,9 +25,7 @@ describe('ConversionsController', () => {
 
   const conversions = {
     convert: jest.fn().mockResolvedValue(result),
-    download: jest.fn().mockResolvedValue(result),
     formats: jest.fn().mockResolvedValue([]),
-    operation: jest.fn().mockResolvedValue({ id: 'op-1' }),
   };
   const controller = new ConversionsController(
     conversions as unknown as ConversionsService,
@@ -59,32 +57,6 @@ describe('ConversionsController', () => {
       'req-1',
     );
     expectAttachment(file);
-  });
-
-  it('downloads a saved result the same way', async () => {
-    const file = await controller.download(
-      { operationId: 'op-1' },
-      user,
-      request,
-      reply,
-    );
-
-    expect(conversions.download).toHaveBeenCalledWith({
-      userId: 'user-1',
-      operationId: 'op-1',
-      correlationId: 'req-1',
-    });
-    expectAttachment(file);
-  });
-
-  it("asks only for the caller's own operation", async () => {
-    await controller.operation({ operationId: 'op-1' }, user, request);
-
-    expect(conversions.operation).toHaveBeenCalledWith({
-      userId: 'user-1',
-      operationId: 'op-1',
-      correlationId: 'req-1',
-    });
   });
 
   it('lists the formats', async () => {

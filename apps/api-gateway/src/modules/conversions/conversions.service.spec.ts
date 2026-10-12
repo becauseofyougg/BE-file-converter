@@ -10,7 +10,7 @@ import {
   type ConvertFileRequest,
 } from '@contracts/messages/conversion.messages';
 import { ERROR_CODES } from '@contracts/errors/error-codes';
-import type { FileStorage } from '@storage/file-storage';
+import { type FileStorage, ObjectNotFoundError } from '@storage/file-storage';
 import type { StorageResolver } from '@storage/storage-resolver';
 import type { GatewayConfig } from '../../config/gateway.config';
 import { ConversionsService } from './conversions.service';
@@ -205,6 +205,35 @@ describe('ConversionsService', () => {
       });
     });
 
+    it('answers 410 when the record and storage disagree — the file is gone', async () => {
+      send.mockReturnValue(of({ operation: {}, result: RESULT }));
+      storage.getStream.mockRejectedValue(
+        new ObjectNotFoundError('results', RESULT.key),
+      );
+
+      await expect(
+        service.convert(requestWith({ targetFormat: 'json' }), USER, 'c'),
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.RESULT_EXPIRED,
+        httpStatus: 410,
+      });
+      expect(service['logger'].error).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'conversion.result_missing' }),
+      );
+    });
+
+    it('says whether the result was kept', async () => {
+      send.mockReturnValue(of({ operation: { saved: false }, result: RESULT }));
+
+      const result = await service.convert(
+        requestWith({ targetFormat: 'json', save: 'true' }),
+        USER,
+        'c',
+      );
+
+      expect(result.saved).toBe(false);
+    });
+
     it('passes a storage refusal that is already an AppError on unchanged', async () => {
       send.mockReturnValue(of({ operation: {}, result: RESULT }));
       storage.getStream.mockRejectedValue(
@@ -279,31 +308,5 @@ describe('ConversionsService', () => {
 
     expect(send.mock.calls[0][1]).not.toHaveProperty('options');
     expect(send.mock.calls[0][1]).not.toHaveProperty('family');
-  });
-
-  it('forwards a request for one operation', async () => {
-    send.mockReturnValue(of('answer'));
-
-    await service.operation({ userId: USER, operationId: 'op' });
-
-    expect(send).toHaveBeenCalledWith(CONVERSION_RPC_PATTERNS.HISTORY_GET, {
-      userId: USER,
-      operationId: 'op',
-    });
-  });
-
-  it('opens a saved result for download', async () => {
-    send.mockReturnValue(of(RESULT));
-
-    const download = await service.download({
-      userId: USER,
-      operationId: 'op',
-    });
-
-    expect(send).toHaveBeenCalledWith(CONVERSION_RPC_PATTERNS.HISTORY_RESULT, {
-      userId: USER,
-      operationId: 'op',
-    });
-    expect(download).toMatchObject({ file: RESULT, operationId: 'op' });
   });
 });

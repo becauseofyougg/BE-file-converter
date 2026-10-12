@@ -298,7 +298,8 @@ Token tables store **hashes**, never the raw token.
 | `DELETE` | `/users/:userId` · `POST .../deletion/confirm` | erasure by anonymisation; self must prove their address |
 | `GET` | `/admin/users` | cursor-paginated directory, `users@list` only |
 | `POST` | `/api/convert` | **implemented**: multipart file + `targetFormat` + `save` → `200` with the converted file ([CONVERSIONS.md](CONVERSIONS.md)) |
-| `GET` | `/api/convert/formats` · `/api/convert/history/:id[/download]` | **implemented**: the matrix from the registry; one own operation; saved results |
+| `GET` | `/api/convert/formats` | **implemented**: the matrix from the registry |
+| `GET` | `/api/transformations/history/:id[/download]` · `/admin/users/:userId/transformations/history/:id/download` | **implemented**: one own operation; saved results, own or (with `transformations@read`) anyone's ([SAVED-RESULTS.md](SAVED-RESULTS.md)) |
 | `GET` | `/api/transformations/history` · `/admin/users/:userId/transformations/history` | **implemented**: the history, own or (with `transformations@read`) anyone's, filtered and cursor-paged ([TRANSFORMATION-HISTORY.md](TRANSFORMATION-HISTORY.md)) |
 | `POST` · `GET` | `/api/images/convert` · `/api/images/convert/formats` | **implemented**: the same pipeline scoped to images, options as form fields too ([IMAGES.md](IMAGES.md)) |
 | `GET` | `/formats` | (planned, queued path) conversion matrix, derived from the registry |

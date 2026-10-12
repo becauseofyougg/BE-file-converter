@@ -104,6 +104,8 @@ describe('ConversionOperationsService', () => {
       IMAGE_MAX_WIDTH: 1000,
       IMAGE_MAX_HEIGHT: 1000,
       IMAGE_MAX_PIXELS: 1_000_000,
+      HISTORY_RETENTION_DAYS: 90,
+      CONVERSION_MAX_SAVED_BYTES: 1024 * 1024,
     };
 
     const config = {
@@ -239,7 +241,7 @@ describe('ConversionOperationsService', () => {
       });
     });
 
-    it('gives an unsaved result an expiry, and a saved one none', async () => {
+    it('keeps an unsaved result for minutes, a saved one for the retention period', async () => {
       const before = Date.now();
 
       await service.convert(await upload('a\r\n1\r\n'));
@@ -248,13 +250,79 @@ describe('ConversionOperationsService', () => {
       expect(unsaved.resultExpiresAt!.getTime()).toBeGreaterThanOrEqual(
         before + 15 * 60_000,
       );
+      expect(unsaved.resultExpiresAt!.getTime()).toBeLessThan(
+        before + 16 * 60_000,
+      );
+      expect(unsaved).toMatchObject({ saved: false, fileId: null });
 
       const saved = await service.convert(
         await upload('a\r\n1\r\n', { save: true }),
       );
+      const row = table.rows.get(saved.operation.id)!;
 
-      expect(table.rows.get(saved.operation.id)!.resultExpiresAt).toBeNull();
-      expect(saved.operation.resultAvailable).toBe(true);
+      expect(row.resultExpiresAt!.getTime()).toBeGreaterThanOrEqual(
+        before + 90 * 24 * 60 * 60_000,
+      );
+      expect(saved.operation).toMatchObject({
+        saved: true,
+        resultAvailable: true,
+      });
+      expect(saved.operation.fileId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(saved.result.fileId).toBe(saved.operation.fileId);
+      // The conversion's own response is named as its spec fixes.
+      expect(saved.result.fileName).toBe('converted.json');
+    });
+
+    it('audits the save: who, which file, how big, how long', async () => {
+      const request = await upload('a\r\n1\r\n', { save: true });
+      const response = await service.convert(request);
+
+      expect(service['logger'].log).toHaveBeenCalledWith({
+        event: 'conversion.file.save',
+        userId: USER,
+        transformationId: request.operationId,
+        fileId: response.operation.fileId,
+        fileSize: response.result.size,
+        durationMs: expect.any(Number) as number,
+        result: 'success',
+      });
+    });
+
+    it('returns a result too large to keep, but does not keep it', async () => {
+      env.CONVERSION_MAX_SAVED_BYTES = 5;
+
+      const request = await upload('a\r\n1\r\n', { save: true });
+      const response = await service.convert(request);
+
+      expect(response.operation).toMatchObject({
+        status: 'COMPLETED',
+        saved: false,
+        fileId: null,
+      });
+      expect(response.result).not.toHaveProperty('fileId');
+      expect(service['logger'].warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'conversion.file.save',
+          result: 'failure',
+          fileId: null,
+          reason: 'larger than the 5 bytes a saved file may be',
+        }),
+      );
+      // Kept only as long as an unsaved result is.
+      expect(
+        table.rows.get(request.operationId)!.resultExpiresAt!.getTime(),
+      ).toBeLessThan(Date.now() + 16 * 60_000);
+    });
+
+    it('writes no save audit line when nothing was asked to be saved', async () => {
+      await service.convert(await upload('a\r\n1\r\n'));
+
+      expect(
+        (service['logger'].log as jest.Mock).mock.calls.some(
+          ([entry]: [{ event: string }]) =>
+            entry.event === 'conversion.file.save',
+        ),
+      ).toBe(false);
     });
 
     it('accepts the target in any case', async () => {
@@ -730,14 +798,42 @@ describe('ConversionOperationsService', () => {
       });
     });
 
-    it('says where a saved result is', async () => {
+    it('says where a saved result is, named after the upload', async () => {
       const done = await service.convert(
         await upload('a\r\n1\r\n', { save: true, targetFormat: 'xml' }),
       );
 
       await expect(
         service.savedResult({ userId: USER, operationId: done.operation.id }),
-      ).resolves.toEqual(done.result);
+      ).resolves.toEqual({
+        ...done.result,
+        fileName: 'people.xml',
+        fileId: done.operation.fileId,
+      });
+    });
+
+    it('answers 410 for a saved result past its time', async () => {
+      const done = await service.convert(
+        await upload('a\r\n1\r\n', { save: true }),
+      );
+      const row = table.rows.get(done.operation.id)!;
+
+      row.resultExpiresAt = new Date(Date.now() - 1);
+
+      await expect(
+        service.savedResult({ userId: USER, operationId: done.operation.id }),
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.RESULT_EXPIRED,
+        httpStatus: 410,
+      });
+
+      // …and once the clean-up has taken the file, the same.
+      row.resultExpiresAt = new Date(Date.now() + 60_000);
+      row.resultKey = null;
+
+      await expect(
+        service.savedResult({ userId: USER, operationId: done.operation.id }),
+      ).rejects.toMatchObject({ httpStatus: 410 });
     });
 
     it('refuses an unsaved result', async () => {

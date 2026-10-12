@@ -27,6 +27,7 @@ export function toOperationRecord(
     },
     options: (row.options as ConversionOptions | null) ?? null,
     saved: row.saved,
+    fileId: isDownloadable(row) ? row.fileId : null,
     resultAvailable: isDownloadable(row),
     error:
       row.errorCode === null
@@ -51,15 +52,62 @@ export function toHistoryItem(
     fileSize: Number(row.sourceSize),
     durationMs: row.durationMs ?? 0,
     ...(row.errorCode === null ? {} : { errorCode: row.errorCode }),
-    resultAvailable: isDownloadable(row),
+    fileId: isDownloadable(row) ? row.fileId : null,
     createdAt: row.createdAt.toISOString(),
   };
 }
 
-/** Only a saved result is offered from the history; an unsaved one is transient. */
-export function isDownloadable(row: ConversionOperation): boolean {
-  return row.status === 'COMPLETED' && row.saved && row.resultKey !== null;
+/**
+ * Only a saved result is offered from the history, and only until its time:
+ * an unsaved one is transient, and a saved one lasts as long as the history.
+ */
+export function isDownloadable(
+  row: ConversionOperation,
+  now = new Date(),
+): boolean {
+  return (
+    row.status === 'COMPLETED' &&
+    row.saved &&
+    row.resultKey !== null &&
+    !hasExpired(row, now)
+  );
 }
+
+export function hasExpired(
+  row: ConversionOperation,
+  now = new Date(),
+): boolean {
+  return row.resultExpiresAt !== null && row.resultExpiresAt <= now;
+}
+
+/**
+ * What a downloaded result is called: the name it was uploaded under, with
+ * the new format's extension — `people.csv` → `people.json`. Kept to the
+ * characters a file name can safely have on any system; the original may hold
+ * anything a client sent, and it ends up in a header.
+ */
+export function downloadName(sourceName: string, extension: string): string {
+  const fileName = sourceName.split(/[/\\]/).pop() ?? '';
+  const stem = fileName.includes('.')
+    ? fileName.slice(0, fileName.lastIndexOf('.'))
+    : fileName;
+  const base = [...stem]
+    .map((char) =>
+      char.charCodeAt(0) < 32 ||
+      char.charCodeAt(0) === 127 ||
+      UNSAFE_IN_NAMES.includes(char)
+        ? '_'
+        : char,
+    )
+    .join('')
+    .replace(/^[.\s]+|[.\s]+$/g, '')
+    .slice(0, 100);
+
+  return `${base || 'converted'}.${extension}`;
+}
+
+/** Characters Windows forbids in a file name, plus the quote that ends a header value. */
+const UNSAFE_IN_NAMES = '"*:<>?|';
 
 /**
  * History cursors: the position of the last row seen, opaque to the client.

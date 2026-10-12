@@ -98,7 +98,7 @@ export class ImagesController {
   @ApiResponse({
     status: 200,
     description:
-      'The image, as `attachment; filename="converted.<ext>"`. `X-Conversion-Id` names the history entry.',
+      'The image, as `attachment; filename="converted.<ext>"`. `X-Conversion-Id` names the history entry; `X-Result-Saved` says whether the result was kept (with `save=true`, `false` only when it is larger than saved files may be).',
     schema: { type: 'string', format: 'binary' },
   })
   @ApiResponse({

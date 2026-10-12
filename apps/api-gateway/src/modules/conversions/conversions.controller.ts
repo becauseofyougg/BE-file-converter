@@ -3,7 +3,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Param,
   Post,
   Req,
   Res,
@@ -20,20 +19,13 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
-import type {
-  ConversionFormatEntry,
-  ConversionOperationRecord,
-} from '@contracts/messages/conversion.messages';
+import type { ConversionFormatEntry } from '@contracts/messages/conversion.messages';
 import { correlationIdFor } from '@core/messaging/correlation-id';
 import { CurrentUser, type RequestUser } from '../auth/request-user';
 import { ErrorResponseDto } from '../shared/api-responses.dto';
 import { attachment, RESULT_TYPES } from './attachment';
 import { ConversionsService } from './conversions.service';
-import {
-  ConversionFormatEntryDto,
-  ConversionOperationDto,
-  ConversionParamsDto,
-} from './dto/conversions.dto';
+import { ConversionFormatEntryDto } from './dto/conversions.dto';
 
 const MINUTE_MS = 60_000;
 
@@ -102,7 +94,7 @@ export class ConversionsController {
   @ApiResponse({
     status: 200,
     description:
-      'The converted file, as `attachment; filename="converted.<ext>"`. `X-Conversion-Id` names the history entry.',
+      'The converted file, as `attachment; filename="converted.<ext>"`. `X-Conversion-Id` names the history entry; `X-Result-Saved` says whether the result was kept (with `save=true`, `false` only when it is larger than saved files may be).',
     schema: { type: 'string', format: 'binary' },
   })
   @ApiResponse({
@@ -153,55 +145,5 @@ export class ConversionsController {
   @Throttle({ default: { limit: 120, ttl: MINUTE_MS } })
   formats(@Req() request: FastifyRequest): Promise<ConversionFormatEntry[]> {
     return this.conversions.formats(correlationIdFor(request));
-  }
-
-  @ApiOperation({ summary: 'One of your conversions' })
-  @ApiResponse({ status: 200, type: ConversionOperationDto })
-  @ApiResponse({
-    status: 404,
-    description: '`JOB_NOT_FOUND` — none of yours has this id.',
-    type: ErrorResponseDto,
-  })
-  @Get('history/:operationId')
-  @Throttle({ default: { limit: 120, ttl: MINUTE_MS } })
-  operation(
-    @Param() params: ConversionParamsDto,
-    @CurrentUser() user: RequestUser,
-    @Req() request: FastifyRequest,
-  ): Promise<ConversionOperationRecord> {
-    return this.conversions.operation({
-      userId: user.id,
-      operationId: params.operationId,
-      correlationId: correlationIdFor(request),
-    });
-  }
-
-  @ApiOperation({
-    summary: 'Download a saved result',
-    description: 'Only for a conversion run with `save=true`.',
-  })
-  @ApiProduces(...RESULT_TYPES)
-  @ApiResponse({ status: 200, schema: { type: 'string', format: 'binary' } })
-  @ApiResponse({
-    status: 404,
-    description:
-      '`JOB_NOT_FOUND` — none of yours has this id; `RESULT_NOT_SAVED` — it was not saved, or did not succeed.',
-    type: ErrorResponseDto,
-  })
-  @Get('history/:operationId/download')
-  @Throttle({ default: { limit: 60, ttl: MINUTE_MS } })
-  async download(
-    @Param() params: ConversionParamsDto,
-    @CurrentUser() user: RequestUser,
-    @Req() request: FastifyRequest,
-    @Res({ passthrough: true }) reply: FastifyReply,
-  ): Promise<StreamableFile> {
-    const result = await this.conversions.download({
-      userId: user.id,
-      operationId: params.operationId,
-      correlationId: correlationIdFor(request),
-    });
-
-    return attachment(reply, result);
   }
 }

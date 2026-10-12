@@ -219,6 +219,9 @@ services:
       # How long the transformation history is kept — saved results go with
       # it. docs/TRANSFORMATION-HISTORY.md §6.
       HISTORY_RETENTION_DAYS: ${HISTORY_RETENTION_DAYS:-90}
+      # The largest result kept with save=true; a larger one is still returned,
+      # just not kept. docs/SAVED-RESULTS.md.
+      CONVERSION_MAX_SAVED_BYTES: ${CONVERSION_MAX_SAVED_BYTES:-52428800}
     volumes:
       - converter_storage:/var/lib/file-converter/storage
     depends_on:

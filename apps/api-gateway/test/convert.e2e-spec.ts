@@ -92,7 +92,7 @@ describe('/api/convert (e2e)', () => {
     await storage.put({ bucket: 'results', key, body });
 
     return {
-      operation: { id: payload.operationId },
+      operation: { id: payload.operationId, saved: payload.save },
       result: {
         bucket: 'results',
         key,
@@ -207,12 +207,13 @@ describe('/api/convert (e2e)', () => {
   });
 
   it('accepts the fields after the file, and keeps a saved result', async () => {
-    await post()
+    const response = await post()
       .attach('file', Buffer.from('[1]'), 'a.json')
       .field('targetFormat', 'csv')
       .field('save', 'true')
       .expect(200);
 
+    expect(response.headers['x-result-saved']).toBe('true');
     expect(lastRequest!.save).toBe(true);
     expect(await filesIn('results')).toEqual([
       `${lastRequest!.operationId}.json`,
@@ -394,15 +395,6 @@ describe('/api/convert (e2e)', () => {
     ]);
   });
 
-  it('refuses a malformed history id with 400, before asking anyone', async () => {
-    const response = await request(app.getHttpServer())
-      .get('/api/convert/history/not-a-uuid')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(400);
-
-    expect(code(response.body)).toBe(ERROR_CODES.VALIDATION_FAILED);
-  });
-
   it('documents the upload as multipart in the OpenAPI document', async () => {
     const response = await request(app.getHttpServer())
       .get('/docs/json')
@@ -412,12 +404,7 @@ describe('/api/convert (e2e)', () => {
     ).paths;
 
     expect(Object.keys(paths)).toEqual(
-      expect.arrayContaining([
-        '/api/convert',
-        '/api/convert/formats',
-        '/api/convert/history/{operationId}',
-        '/api/convert/history/{operationId}/download',
-      ]),
+      expect.arrayContaining(['/api/convert', '/api/convert/formats']),
     );
     expect(
       Object.keys(

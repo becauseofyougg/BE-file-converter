@@ -49,7 +49,7 @@ describe('ConversionCleanupJob', () => {
     expect(storageDelete).toHaveBeenCalledWith('results', 'u/op-1.json');
     expect(update).toHaveBeenCalledWith({
       where: { id: 'op-1' },
-      data: { resultKey: null, resultExpiresAt: null },
+      data: { resultKey: null },
     });
     expect(job['logger'].log).toHaveBeenCalledWith({
       event: 'conversion.cleanup',
