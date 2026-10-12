@@ -42,7 +42,8 @@ export const CONVERSION_RPC_PATTERNS = {
   CONVERT: 'conversion.rpc.convert',
   /** Every direction the registered converters can take. */
   FORMATS: 'conversion.rpc.formats',
-  HISTORY_LIST: 'conversion.rpc.history.list',
+  /** One user's finished conversions, filtered and paged — docs/TRANSFORMATION-HISTORY.md. */
+  TRANSFORMATIONS: 'conversion.rpc.transformations',
   HISTORY_GET: 'conversion.rpc.history.get',
   /** Where a saved result is kept, for the gateway to stream it. */
   HISTORY_RESULT: 'conversion.rpc.history.result',
@@ -155,15 +156,75 @@ export interface ConversionOperationRecord {
   finishedAt: string | null;
 }
 
-export interface ConversionHistoryRequest {
+/**
+ * What kind of transformation, as the history shows it. Every family that
+ * is not images is `file`: the spec knows these two, and a new family is
+ * one more line in `transformationType`, not a new value here.
+ */
+export const TRANSFORMATION_TYPES = ['file', 'image'] as const;
+export type TransformationType = (typeof TRANSFORMATION_TYPES)[number];
+
+/** Finished transformations only; one still running is not history yet. */
+export const TRANSFORMATION_STATUSES = ['success', 'error'] as const;
+export type TransformationStatus = (typeof TRANSFORMATION_STATUSES)[number];
+
+/**
+ * The right to read **another** user's transformation history. One's own
+ * needs only a session. Created and granted to ADMIN by identity's migration
+ * `20261012130000_transformations_permission`.
+ */
+export const TRANSFORMATIONS_READ_PERMISSION = {
+  resource: 'transformations',
+  action: 'read',
+} as const;
+
+export function transformationType(family: string): TransformationType {
+  return family === 'image' ? 'image' : 'file';
+}
+
+export interface TransformationHistoryFilters {
+  type?: TransformationType;
+  sourceFormat?: string;
+  targetFormat?: string;
+  status?: TransformationStatus;
+  /** ISO 8601, inclusive. */
+  createdAtFrom?: string;
+  /** ISO 8601, inclusive. */
+  createdAtTo?: string;
+}
+
+export interface TransformationHistoryRequest extends TransformationHistoryFilters {
+  /** Whose history: the caller's own, or — for an administrator — anyone's. */
   userId: string;
   cursor?: string;
   limit?: number;
   correlationId?: string;
 }
 
-export interface ConversionHistoryPage {
-  items: ConversionOperationRecord[];
+/**
+ * One finished transformation, as the spec fixes it. Nothing personal and
+ * nothing about the content: no file name, no checksum, no storage key —
+ * an administrator reading someone's history learns what was converted and
+ * how it went, not what it was.
+ */
+export interface TransformationHistoryItem {
+  id: string;
+  type: TransformationType;
+  /** `null` when the file was not recognised as any format. */
+  sourceFormat: string | null;
+  targetFormat: string;
+  status: TransformationStatus;
+  /** Bytes of the source. */
+  fileSize: number;
+  durationMs: number;
+  errorCode?: string;
+  /** A saved result can be downloaded: `GET /api/convert/history/:id/download`. */
+  resultAvailable: boolean;
+  createdAt: string;
+}
+
+export interface TransformationHistoryPage {
+  items: TransformationHistoryItem[];
   nextCursor: string | null;
 }
 

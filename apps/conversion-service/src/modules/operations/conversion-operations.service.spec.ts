@@ -21,7 +21,6 @@ import { ImageConverter } from '../image/image.converter';
 import { transform, type TransformRequest } from '../data/data-transform';
 import { ConversionLimits } from './conversion-limits';
 import { ConversionOperationsService } from './conversion-operations.service';
-import { encodeCursor } from './operation-record';
 
 const USER = '0b6c3c6e-55d4-4f5e-8f2a-6a4c1d2e3f40';
 
@@ -559,6 +558,70 @@ describe('ConversionOperationsService', () => {
       expect(response.operation.source.format).toBe('svg');
     });
 
+    describe('records what kind of transformation it was', () => {
+      const family = (operationId: string) =>
+        table.rows.get(operationId)!.family;
+
+      it('from the converter that ran it', async () => {
+        const image = await upload(SVG, { name: 'a.svg', targetFormat: 'png' });
+        const data = await upload('a\r\n1\r\n');
+
+        await service.convert(image);
+        await service.convert(data);
+
+        expect(family(image.operationId)).toBe('image');
+        expect(family(data.operationId)).toBe('data');
+      });
+
+      it('from the source, when the pair does not go', async () => {
+        const request = await upload(SVG, {
+          name: 'a.svg',
+          targetFormat: 'csv',
+        });
+
+        await refusal(request);
+
+        expect(family(request.operationId)).toBe('image');
+      });
+
+      it("from the route's family, when the file is not recognised", async () => {
+        const request = await upload('?', {
+          name: 'x.bin',
+          targetFormat: 'png',
+          family: 'image',
+        });
+
+        await refusal(request);
+
+        expect(
+          table.conversionOperation.create.mock.calls[0][0].data.family,
+        ).toBe('image');
+        expect(family(request.operationId)).toBe('image');
+      });
+
+      it('from the target, when nothing else says', async () => {
+        const request = await upload('?', {
+          name: 'x.bin',
+          targetFormat: 'jpeg',
+        });
+
+        await refusal(request);
+
+        expect(family(request.operationId)).toBe('image');
+      });
+
+      it('as data, when nothing is known at all', async () => {
+        const request = await upload('?', {
+          name: 'x.bin',
+          targetFormat: 'toml',
+        });
+
+        await refusal(request);
+
+        expect(family(request.operationId)).toBe('data');
+      });
+    });
+
     it('refuses options the direction does not take, before converting', async () => {
       const error = await refusal(
         await upload('a\r\n1\r\n', { options: { quality: 80 } }),
@@ -636,102 +699,6 @@ describe('ConversionOperationsService', () => {
         code: ERROR_CODES.UNSUPPORTED_CONVERSION,
         message: 'Cannot convert png to svg',
         details: { supported: ['jpeg'] },
-      });
-    });
-  });
-
-  describe('history', () => {
-    const row = (id: string, createdAt: string) =>
-      ({
-        id,
-        userId: USER,
-        status: 'COMPLETED',
-        sourceName: 'a.csv',
-        sourceFormat: 'csv',
-        sourceSize: BigInt(3),
-        sourceChecksum: null,
-        targetFormat: 'json',
-        resultSize: BigInt(5),
-        resultChecksum: null,
-        resultKey: null,
-        storageDriver: 'local',
-        saved: false,
-        resultExpiresAt: null,
-        errorCode: null,
-        errorMessage: null,
-        durationMs: 4,
-        correlationId: 'c',
-        createdAt: new Date(createdAt),
-        finishedAt: null,
-      }) as ConversionOperation;
-
-    const A = '00000000-0000-4000-8000-00000000000a';
-    const B = '00000000-0000-4000-8000-00000000000b';
-    const C = '00000000-0000-4000-8000-00000000000c';
-
-    it("pages the user's operations newest first, with a cursor for the next page", async () => {
-      table.conversionOperation.findMany.mockResolvedValue([
-        row(C, '2026-10-02T12:00:00Z'),
-        row(B, '2026-10-02T11:00:00Z'),
-        row(A, '2026-10-02T10:00:00Z'),
-      ]);
-
-      const page = await service.history({ userId: USER, limit: 2 });
-
-      expect(table.conversionOperation.findMany).toHaveBeenCalledWith({
-        where: { userId: USER },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: 3,
-      });
-      expect(page.items.map((item) => item.id)).toEqual([C, B]);
-      expect(page.nextCursor).toBe(
-        encodeCursor(row(B, '2026-10-02T11:00:00Z')),
-      );
-    });
-
-    it('continues after the cursor, tie-broken by id', async () => {
-      table.conversionOperation.findMany.mockResolvedValue([]);
-
-      const at = new Date('2026-10-02T11:00:00Z');
-      const page = await service.history({
-        userId: USER,
-        cursor: encodeCursor({ createdAt: at, id: B }),
-      });
-
-      expect(table.conversionOperation.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            userId: USER,
-            OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: B } }],
-          },
-          take: 21,
-        }),
-      );
-      expect(page).toEqual({ items: [], nextCursor: null });
-    });
-
-    it('clamps the page size', async () => {
-      table.conversionOperation.findMany.mockResolvedValue([]);
-
-      await service.history({ userId: USER, limit: 10_000 });
-      await service.history({ userId: USER, limit: 0 });
-
-      expect(
-        table.conversionOperation.findMany.mock.calls.map(
-          (call) => call[0].take,
-        ),
-      ).toEqual([101, 2]);
-    });
-
-    it.each([
-      'garbage',
-      Buffer.from('2026-10-02T11:00:00Z|not-a-uuid').toString('base64url'),
-    ])('refuses a cursor it did not issue: %s', async (cursor) => {
-      await expect(
-        service.history({ userId: USER, cursor }),
-      ).rejects.toMatchObject({
-        code: ERROR_CODES.VALIDATION_FAILED,
-        httpStatus: 400,
       });
     });
   });

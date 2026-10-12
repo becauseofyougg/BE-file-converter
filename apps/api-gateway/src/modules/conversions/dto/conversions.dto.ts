@@ -1,41 +1,7 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import {
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Max,
-  MaxLength,
-  Min,
-} from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsUUID } from 'class-validator';
 
-import {
-  CONVERSION_HISTORY_LIMITS,
-  CONVERSION_OPERATION_STATUSES,
-} from '@contracts/messages/conversion.messages';
-
-export class ConversionHistoryQueryDto {
-  @ApiPropertyOptional({
-    description: '`nextCursor` from the previous page. Opaque.',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(256)
-  cursor?: string;
-
-  @ApiPropertyOptional({
-    minimum: 1,
-    maximum: CONVERSION_HISTORY_LIMITS.max,
-    default: CONVERSION_HISTORY_LIMITS.default,
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(CONVERSION_HISTORY_LIMITS.max)
-  limit?: number;
-}
+import { CONVERSION_OPERATION_STATUSES } from '@contracts/messages/conversion.messages';
 
 /** A malformed id is a 400, never a lookup. */
 export class ConversionParamsDto {
@@ -132,12 +98,4 @@ export class ConversionOperationDto {
 
   @ApiProperty({ format: 'date-time', nullable: true, type: String })
   finishedAt: string | null;
-}
-
-export class ConversionHistoryPageDto {
-  @ApiProperty({ type: [ConversionOperationDto] })
-  items: ConversionOperationDto[];
-
-  @ApiProperty({ nullable: true, type: String })
-  nextCursor: string | null;
 }

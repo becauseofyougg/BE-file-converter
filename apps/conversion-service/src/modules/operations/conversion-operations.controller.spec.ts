@@ -4,15 +4,16 @@ import type { ConverterRegistry } from '../converters/converter-registry';
 import { ConversionOperationsController } from './conversion-operations.controller';
 import type { ConversionOperationsService } from './conversion-operations.service';
 import type {
-  ConversionHistoryMessageDto,
   ConversionOperationMessageDto,
   ConvertFileMessageDto,
+  TransformationHistoryMessageDto,
 } from './dto/conversion-messages.dto';
+import type { TransformationHistoryService } from './transformation-history.service';
 
 describe('ConversionOperationsController', () => {
+  const history = { list: jest.fn().mockResolvedValue('page') };
   const operations = {
     convert: jest.fn().mockResolvedValue('converted'),
-    history: jest.fn().mockResolvedValue('page'),
     operation: jest.fn().mockResolvedValue('record'),
     savedResult: jest.fn().mockResolvedValue('file'),
   };
@@ -22,6 +23,7 @@ describe('ConversionOperationsController', () => {
   const controller = new ConversionOperationsController(
     operations as unknown as ConversionOperationsService,
     registry as unknown as ConverterRegistry,
+    history as unknown as TransformationHistoryService,
   );
 
   let ack: jest.Mock;
@@ -65,16 +67,21 @@ describe('ConversionOperationsController', () => {
   });
 
   it('serves the history, an operation and a saved result', async () => {
-    const page = { userId: 'u' } as ConversionHistoryMessageDto;
+    const page = {
+      userId: 'u',
+      status: 'error',
+    } as TransformationHistoryMessageDto;
     const one = {
       userId: 'u',
       operationId: 'op',
     } as ConversionOperationMessageDto;
 
-    await expect(controller.history(page, context)).resolves.toBe('page');
+    await expect(controller.transformations(page, context)).resolves.toBe(
+      'page',
+    );
     await expect(controller.operation(one, context)).resolves.toBe('record');
     await expect(controller.result(one, context)).resolves.toBe('file');
-    expect(operations.history).toHaveBeenCalledWith(page);
+    expect(history.list).toHaveBeenCalledWith(page);
     expect(operations.operation).toHaveBeenCalledWith(one);
     expect(operations.savedResult).toHaveBeenCalledWith(one);
   });

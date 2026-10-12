@@ -14,10 +14,10 @@ import {
 import {
   CONVERSION_RPC_PATTERNS,
   type ConversionFormatEntry,
-  type ConversionHistoryPage,
   type ConversionOperationRecord,
   type ConversionResultFile,
   type ConvertFileResponse,
+  type TransformationHistoryPage,
 } from '@contracts/messages/conversion.messages';
 import { RpcAppExceptionFilter } from '@core/errors/rpc-app-exception.filter';
 import { RmqAckInterceptor, settleRpc } from '@core/messaging/rmq-ack';
@@ -25,10 +25,11 @@ import { ConverterRegistry } from '../converters/converter-registry';
 import { ConversionOperationsService } from './conversion-operations.service';
 import {
   ConversionFormatsMessageDto,
-  ConversionHistoryMessageDto,
   ConversionOperationMessageDto,
   ConvertFileMessageDto,
+  TransformationHistoryMessageDto,
 } from './dto/conversion-messages.dto';
+import { TransformationHistoryService } from './transformation-history.service';
 
 /** Mirrors the gateway's global pipe — this boundary is validated separately. */
 const messageValidationPipe = new ValidationPipe({
@@ -52,6 +53,7 @@ export class ConversionOperationsController {
   constructor(
     private readonly operations: ConversionOperationsService,
     private readonly registry: ConverterRegistry,
+    private readonly history: TransformationHistoryService,
   ) {}
 
   @MessagePattern(CONVERSION_RPC_PATTERNS.CONVERT)
@@ -72,12 +74,12 @@ export class ConversionOperationsController {
     );
   }
 
-  @MessagePattern(CONVERSION_RPC_PATTERNS.HISTORY_LIST)
-  async history(
-    @Payload(messageValidationPipe) dto: ConversionHistoryMessageDto,
+  @MessagePattern(CONVERSION_RPC_PATTERNS.TRANSFORMATIONS)
+  async transformations(
+    @Payload(messageValidationPipe) dto: TransformationHistoryMessageDto,
     @Ctx() context: RmqContext,
-  ): Promise<ConversionHistoryPage> {
-    return settleRpc(context, () => this.operations.history(dto));
+  ): Promise<TransformationHistoryPage> {
+    return settleRpc(context, () => this.history.list(dto));
   }
 
   @MessagePattern(CONVERSION_RPC_PATTERNS.HISTORY_GET)

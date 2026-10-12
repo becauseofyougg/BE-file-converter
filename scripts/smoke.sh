@@ -179,8 +179,8 @@ check "over the format's limit is 413" "413|FILE_TOO_LARGE" "$(convert "$DIR/big
 check "save=true" 200 "$(convert "$DIR/people.yaml" people.yaml xml true)"
 SAVED_ID=$(header x-conversion-id)
 cp "$DIR/body" "$DIR/saved.xml"
-check "GET /api/convert/history" 200 "$(req GET '/api/convert/history?limit=100')"
-check "  every attempt recorded, failures included" yes "$(field "b.items.length>=18&&b.items.some(i=>i.status==='FAILED')?'yes':'no'")"
+check "GET /api/transformations/history" 200 "$(req GET '/api/transformations/history?limit=100')"
+check "  every attempt recorded, failures included" yes "$(field "b.items.length>=18&&b.items.some(i=>i.status==='error')?'yes':'no'")"
 check "  the saved one is downloadable, the unsaved one not" "true|false" \
   "$(field "[b.items.find(i=>i.id==='$SAVED_ID').resultAvailable,b.items.find(i=>i.id==='$UNSAVED_ID').resultAvailable].join('|')")"
 check "GET …/history/:id/download" 200 "$(curl -s -o "$DIR/download.xml" -w '%{http_code}' -b "$JAR" "$GW/api/convert/history/$SAVED_ID/download")"
@@ -231,6 +231,7 @@ check "JPEG → PNG" "200|png 6x4" "$(image "$DIR/dot.jpg" dot.jpg png)|$(pictur
 check "  recognised by content, whatever the name" "200|png 6x4" "$(image "$DIR/dot.jpg" photo.png png)|$(picture)"
 check "SVG → PNG at its own size" "200|png 100x50" "$(image "$DIR/logo.svg" logo.svg png)|$(picture)"
 check "SVG → PNG, width given, height scaled" "200|png 400x200" "$(image "$DIR/logo.svg" logo.svg png -F width=400)|$(picture)"
+WIDE_ID=$(header x-conversion-id)
 check "SVG → JPEG, options as JSON" "200|jpeg 300x300" "$(image "$DIR/logo.svg" logo.svg jpeg -F 'options={"width":300,"height":300,"quality":60,"background":"#00ff00"}')|$(picture)"
 check "  the same through /api/convert" 200 "$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -F "file=@$DIR/logo.svg;filename=logo.svg" -F targetFormat=png -F 'options={"width":50}' "$GW/api/convert")"
 check "anything → SVG is refused" "400|UNSUPPORTED_CONVERSION" "$(image "$DIR/dot.png" dot.png svg)|$(field b.code)"
@@ -240,8 +241,28 @@ check "an SVG reaching for a local file" "400|UNSAFE_SOURCE" "$(image "$DIR/leak
 check "an SVG wider than allowed" "400|IMAGE_TOO_LARGE" "$(image "$DIR/wide.svg" wide.svg png)|$(field b.code)"
 check "a decompression bomb, refused from its header" "400|IMAGE_TOO_LARGE" "$(image "$DIR/bomb.png" bomb.png jpeg)|$(field b.code)"
 check "a CSV sent to the image route is 415" "415|UNSUPPORTED_FORMAT" "$(image "$DIR/people.csv" people.csv png)|$(field b.code)"
-check "image options kept in the history" '{"width":400}' \
-  "$(req GET '/api/convert/history?limit=100' > /dev/null; field "JSON.stringify(b.items.find(i=>i.options&&i.options.width===400)?.options)")"
+check "image options kept with the operation" '{"width":400}' \
+  "$(req GET "/api/convert/history/$WIDE_ID" > /dev/null; field "JSON.stringify(b.options)")"
+
+echo "== transformation history (docs/TRANSFORMATION-HISTORY.md)"
+history() { req GET "/api/transformations/history$1"; }
+check "type=image: images only" "200|yes" "$(history '?type=image&limit=100')|$(field "b.items.length>0&&b.items.every(i=>i.type==='image')?'yes':'no'")"
+check "type=file: files only" "200|yes" "$(history '?type=file&limit=100')|$(field "b.items.length>0&&b.items.every(i=>i.type==='file')?'yes':'no'")"
+check "status=error: failures, each with its code" "200|yes" "$(history '?status=error&limit=100')|$(field "b.items.length>0&&b.items.every(i=>i.status==='error'&&i.errorCode)?'yes':'no'")"
+check "sourceFormat=svg&targetFormat=png" "200|yes" "$(history '?sourceFormat=svg&targetFormat=png')|$(field "b.items.length>0&&b.items.every(i=>i.sourceFormat==='svg'&&i.targetFormat==='png')?'yes':'no'")"
+check "a period in the future is empty" "200|0" "$(history '?createdAtFrom=2999-01-01T00:00:00Z')|$(field b.items.length)"
+check "no file names or checksums in it" no "$(history '?limit=100' > /dev/null; grep -qE 'people\.|logo\.svg|checksum|sourceName' "$DIR/body" && echo yes || echo no)"
+history '?limit=2' > /dev/null
+PAGE1=$(field "b.items.map(i=>i.id).join(',')")
+CURSOR=$(field b.nextCursor)
+check "paged by cursor, without overlap" "200|yes" "$(history "?limit=2&cursor=$CURSOR")|$(field "b.items.length===2&&!b.items.some(i=>'$PAGE1'.includes(i.id))?'yes':'no'")"
+check "the same request, the same page" "$PAGE1" "$(history '?limit=2' > /dev/null; field "b.items.map(i=>i.id).join(',')")"
+check "an unknown type is 400" "400|VALIDATION_FAILED" "$(history '?type=video')|$(field b.code)"
+check "an unknown format is 400, naming the known ones" "400|yes" "$(history '?sourceFormat=toml')|$(field "JSON.stringify(b.details).includes('csv, jpeg, json')?'yes':'no'")"
+check "the old list is gone" 404 "$(req GET /api/convert/history)"
+check "transformations@read granted to ADMIN by migration" 1 "$(sql identity "SELECT count(*) FROM grants g JOIN roles r ON r.id = g.role_id JOIN permissions p ON p.id = g.permission_id WHERE r.name = 'ADMIN' AND p.name = 'transformations'")"
+check "ADMIN reads another user's history" 200 "$(req GET "/admin/users/$USER_ID/transformations/history?type=image")"
+check "  an unknown user is 404" "404|USER_NOT_FOUND" "$(req GET /admin/users/00000000-0000-4000-8000-000000000000/transformations/history)|$(field b.code)"
 
 echo "== logout"
 check "POST /auth/logout" 204 "$(req POST /auth/logout)"
@@ -255,6 +276,8 @@ echo "== email change and erasure (a second, fresh account)"
 OLD_EMAIL="smoke2-$(date +%s)@example.com"
 NEW_EMAIL="moved-$(date +%s)@example.com"
 USER2=$(register "$OLD_EMAIL")
+check "a plain user may not read another's history" "403|FORBIDDEN" "$(req GET "/admin/users/$USER_ID/transformations/history")|$(field b.code)"
+check "  and the refusal is audited" yes "$(sleep 1; docker compose logs api-gateway 2> /dev/null | grep 'transformations.history.read' | grep -q '"status":403' && echo yes || echo no)"
 check "POST /users/:self/email-change" 200 "$(req POST "/users/$USER2/email-change" "{\"newEmail\":\"$NEW_EMAIL\"}")"
 CHALLENGE=$(field b.challengeId)
 CODE=$(mail_code "$NEW_EMAIL")

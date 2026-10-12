@@ -11,8 +11,6 @@ import {
   CONVERSION_RPC_PATTERNS,
   type ConversionFormatEntry,
   type ConversionFormatsRequest,
-  type ConversionHistoryPage,
-  type ConversionHistoryRequest,
   type ConversionOperationRecord,
   type ConversionOperationRequest,
   type ConversionResultFile,
@@ -147,14 +145,6 @@ export class ConversionsService {
     this.formatsCache.set(family ?? '', { entries, at: Date.now() });
 
     return entries;
-  }
-
-  history(request: ConversionHistoryRequest): Promise<ConversionHistoryPage> {
-    return sendRpc(
-      this.conversion,
-      CONVERSION_RPC_PATTERNS.HISTORY_LIST,
-      request,
-    );
   }
 
   operation(

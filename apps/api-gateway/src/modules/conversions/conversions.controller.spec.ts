@@ -27,7 +27,6 @@ describe('ConversionsController', () => {
     convert: jest.fn().mockResolvedValue(result),
     download: jest.fn().mockResolvedValue(result),
     formats: jest.fn().mockResolvedValue([]),
-    history: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
     operation: jest.fn().mockResolvedValue({ id: 'op-1' }),
   };
   const controller = new ConversionsController(
@@ -78,16 +77,9 @@ describe('ConversionsController', () => {
     expectAttachment(file);
   });
 
-  it("asks only for the caller's own history", async () => {
-    await controller.history({ cursor: 'c', limit: 5 }, user, request);
+  it("asks only for the caller's own operation", async () => {
     await controller.operation({ operationId: 'op-1' }, user, request);
 
-    expect(conversions.history).toHaveBeenCalledWith({
-      userId: 'user-1',
-      cursor: 'c',
-      limit: 5,
-      correlationId: 'req-1',
-    });
     expect(conversions.operation).toHaveBeenCalledWith({
       userId: 'user-1',
       operationId: 'op-1',

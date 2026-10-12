@@ -3,10 +3,8 @@ import { createHash } from 'node:crypto';
 
 import { ConfigService } from '@core/config/config.service';
 import { AppError } from '@core/errors/app-error';
+import { FormatFamily } from '@contracts/enums/conversion.enums';
 import {
-  CONVERSION_HISTORY_LIMITS,
-  type ConversionHistoryPage,
-  type ConversionHistoryRequest,
   type ConversionOperationRecord,
   type ConversionOperationRequest,
   type ConversionResultFile,
@@ -24,12 +22,7 @@ import type { ConversionConfig } from '../../config/conversion.config';
 import { PrismaService } from '../../database/prisma.service';
 import { ConverterRegistry } from '../converters/converter-registry';
 import { ConversionLimits } from './conversion-limits';
-import {
-  decodeCursor,
-  encodeCursor,
-  isDownloadable,
-  toOperationRecord,
-} from './operation-record';
+import { isDownloadable, toOperationRecord } from './operation-record';
 
 /** Enough of a file to recognise it by content when its name does not say. */
 const HEAD_BYTES = 4096;
@@ -38,6 +31,8 @@ const HEAD_BYTES = 4096;
 interface SourceFacts {
   format: string | null;
   checksum: string | null;
+  /** Whose kind of transformation it is — narrowed as more is known. */
+  family: string;
 }
 
 /**
@@ -73,7 +68,14 @@ export class ConversionOperationsService {
   async convert(request: ConvertFileRequest): Promise<ConvertFileResponse> {
     const startedAt = Date.now();
     const target = request.targetFormat.toLowerCase();
-    const facts: SourceFacts = { format: null, checksum: null };
+    const facts: SourceFacts = {
+      format: null,
+      checksum: null,
+      // The best guess before the file is read: the route's family, else the
+      // target's. Refined once the source is recognised.
+      family:
+        request.family ?? this.registry.familyOf(target) ?? FormatFamily.DATA,
+    };
 
     await this.prisma.conversionOperation.create({
       data: {
@@ -82,6 +84,7 @@ export class ConversionOperationsService {
         sourceName: request.source.name.slice(0, 255),
         sourceSize: BigInt(request.source.size),
         targetFormat: target.slice(0, 16),
+        family: facts.family,
         storageDriver: this.storage.driver,
         saved: request.save,
         options: hasOptions(request.options) ? request.options : undefined,
@@ -102,48 +105,6 @@ export class ConversionOperationsService {
     } finally {
       await this.discardUpload(request);
     }
-  }
-
-  async history(
-    request: ConversionHistoryRequest,
-  ): Promise<ConversionHistoryPage> {
-    const limit = Math.min(
-      Math.max(request.limit ?? CONVERSION_HISTORY_LIMITS.default, 1),
-      CONVERSION_HISTORY_LIMITS.max,
-    );
-    const cursor = request.cursor ? decodeCursor(request.cursor) : null;
-
-    if (request.cursor && !cursor) {
-      throw new AppError(
-        ERROR_CODES.VALIDATION_FAILED,
-        'The cursor is not valid',
-        400,
-      );
-    }
-
-    const rows = await this.prisma.conversionOperation.findMany({
-      where: {
-        userId: request.userId,
-        ...(cursor
-          ? {
-              OR: [
-                { createdAt: { lt: cursor.createdAt } },
-                { createdAt: cursor.createdAt, id: { lt: cursor.id } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-    });
-
-    const page = rows.slice(0, limit);
-
-    return {
-      items: page.map(toOperationRecord),
-      nextCursor:
-        rows.length > limit ? encodeCursor(page[page.length - 1]) : null,
-    };
   }
 
   async operation(
@@ -194,6 +155,9 @@ export class ConversionOperationsService {
     }
 
     const source = await this.readSource(request, facts);
+
+    facts.family = this.registry.familyOf(source.format) ?? facts.family;
+
     const converter = this.registry.converterFor(
       source.format,
       target,
@@ -212,6 +176,8 @@ export class ConversionOperationsService {
         },
       );
     }
+
+    facts.family = converter.family;
 
     const options = request.options ?? {};
 
@@ -254,6 +220,7 @@ export class ConversionOperationsService {
         where: { id: request.operationId },
         data: {
           status: 'COMPLETED',
+          family: facts.family,
           sourceFormat: source.format,
           sourceChecksum: facts.checksum,
           resultSize: BigInt(output.data.length),
@@ -441,6 +408,7 @@ export class ConversionOperationsService {
         where: { id: request.operationId },
         data: {
           status: 'FAILED',
+          family: facts.family,
           sourceFormat: facts.format,
           sourceChecksum: facts.checksum,
           errorCode: code,

@@ -89,7 +89,7 @@ This list is built from whatever converter modules are registered (§8), not mai
 
 | Route | |
 |---|---|
-| `GET /api/convert/history?limit=&cursor=` | newest first, `limit` 1–100 (default 20), `nextCursor` for the next page |
+| `GET /api/transformations/history` | the list: newest first, filtered, cursor-paged — replaced the earlier `GET /api/convert/history` list; see [TRANSFORMATION-HISTORY.md](TRANSFORMATION-HISTORY.md) |
 | `GET /api/convert/history/:id` | one entry; `404 JOB_NOT_FOUND` for an id that is not yours |
 | `GET /api/convert/history/:id/download` | a saved result; `404 RESULT_NOT_SAVED` if it was not saved or did not succeed |
 

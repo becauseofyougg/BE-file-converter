@@ -24,6 +24,7 @@ same DTOs that validate requests, so the two cannot drift apart. It is served ou
 | Health, rate limiting, validation, CORS, logging, OpenAPI, ≥ 80 % coverage | done | [NFR](docs/NON-FUNCTIONAL-REQUIREMENTS.md) |
 | Text conversion: CSV ⇄ JSON ⇄ XML ⇄ YAML (all 12 pairs), synchronous, with history and optional saving | done | [CONVERSIONS](docs/CONVERSIONS.md) |
 | Image conversion: PNG ⇄ JPEG, SVG → PNG/JPEG, with quality, size and background; SVG safety, decompression-bomb limits | done | [IMAGES](docs/IMAGES.md) |
+| Transformation history: own, and any user's with `transformations@read`; filters, cursor paging, audit, retention | done | [TRANSFORMATION-HISTORY](docs/TRANSFORMATION-HISTORY.md) |
 | Storage: S3/MinIO or a local directory, chosen by `STORAGE_DRIVER` | done | [CONVERSIONS §6](docs/CONVERSIONS.md#6-streaming-threads-and-storage) |
 | Queued conversion of heavy families (documents, audio/video): job queue, progress | not started | [ARCHITECTURE §5](docs/ARCHITECTURE.md) |
 | Password reset, in-app notifications / SSE | not started | |
@@ -57,7 +58,8 @@ docker compose up -d --build          # POSTGRES_PORT=5433 if a local Postgres h
      -OJ http://localhost:3000/api/convert           # saves converted.json
    ```
 
-   `GET /api/convert/formats` lists the directions, `GET /api/convert/history` your conversions.
+   `GET /api/convert/formats` lists the directions, `GET /api/transformations/history` your
+   conversions (`?type=image&status=error`, …).
    Images have their own route as well:
 
    ```bash

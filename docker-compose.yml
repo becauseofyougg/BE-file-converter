@@ -216,6 +216,9 @@ services:
       IMAGE_MAX_WIDTH: ${IMAGE_MAX_WIDTH:-8192}
       IMAGE_MAX_HEIGHT: ${IMAGE_MAX_HEIGHT:-8192}
       IMAGE_MAX_PIXELS: ${IMAGE_MAX_PIXELS:-40000000}
+      # How long the transformation history is kept — saved results go with
+      # it. docs/TRANSFORMATION-HISTORY.md §6.
+      HISTORY_RETENTION_DAYS: ${HISTORY_RETENTION_DAYS:-90}
     volumes:
       - converter_storage:/var/lib/file-converter/storage
     depends_on:
