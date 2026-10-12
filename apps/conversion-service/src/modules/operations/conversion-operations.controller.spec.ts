@@ -55,10 +55,13 @@ describe('ConversionOperationsController', () => {
   });
 
   it('lists the formats from the registry', async () => {
-    await expect(controller.formats(context)).resolves.toEqual([
+    await expect(controller.formats({}, context)).resolves.toEqual([
       { source: 'csv', target: ['json'] },
     ]);
     expect(ack).toHaveBeenCalled();
+
+    await controller.formats({ family: 'image' }, context);
+    expect(registry.formats).toHaveBeenLastCalledWith('image');
   });
 
   it('serves the history, an operation and a saved result', async () => {

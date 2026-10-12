@@ -7,6 +7,7 @@ import {
   WorkerRunner,
   WorkerTimeoutError,
 } from '../converters/worker-runner';
+import { DETECTION } from '../converters/file-converter';
 import { DataConverter } from './data.converter';
 import { transform, type TransformRequest } from './data-transform';
 
@@ -32,6 +33,7 @@ describe('DataConverter', () => {
     data: Buffer.from(text),
     source,
     target,
+    options: {},
     timeoutMs: 1_000,
   });
 
@@ -56,14 +58,21 @@ describe('DataConverter', () => {
       ['data.json', 'json'],
       ['data.xml', 'xml'],
     ])('by extension: %s → %s', (name, format) => {
-      expect(converter.detect(name, Buffer.from('anything'))).toBe(format);
+      expect(converter.detect(name, Buffer.from('anything'))).toEqual({
+        format,
+        confidence: DETECTION.EXTENSION,
+      });
     });
 
+    /** Only consistent with the format, so a surer module's answer wins. */
     it('by content, for JSON and XML, when the name does not say', () => {
-      expect(converter.detect('upload', Buffer.from('\n  {"a": 1}'))).toBe(
-        'json',
+      expect(converter.detect('upload', Buffer.from('\n  {"a": 1}'))).toEqual({
+        format: 'json',
+        confidence: DETECTION.CONTENT,
+      });
+      expect(converter.detect('upload.txt', Buffer.from('<a/>'))?.format).toBe(
+        'xml',
       );
-      expect(converter.detect('upload.txt', Buffer.from('<a/>'))).toBe('xml');
     });
 
     it('looks past a byte-order mark', () => {
@@ -72,11 +81,29 @@ describe('DataConverter', () => {
         Buffer.from('[1]'),
       ]);
 
-      expect(converter.detect('upload', head)).toBe('json');
+      expect(converter.detect('upload', head)?.format).toBe('json');
     });
 
     it('does not guess CSV or YAML from content', () => {
       expect(converter.detect('upload', Buffer.from('a,b\n1,2\n'))).toBeNull();
+    });
+  });
+
+  it('takes no options', () => {
+    expect(() => converter.checkOptions('csv', 'json', {})).not.toThrow();
+
+    let error: AppError | undefined;
+
+    try {
+      converter.checkOptions('csv', 'json', { quality: 80 });
+    } catch (caught) {
+      error = caught as AppError;
+    }
+
+    expect(error).toMatchObject({
+      code: ERROR_CODES.VALIDATION_FAILED,
+      httpStatus: 400,
+      details: { errors: ['quality does not apply to csv → json'] },
     });
   });
 

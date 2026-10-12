@@ -105,6 +105,14 @@ export class ConversionOperationDto {
   @ApiProperty({ type: OperationTargetDto })
   target: OperationTargetDto;
 
+  @ApiProperty({
+    type: Object,
+    nullable: true,
+    example: { quality: 80 },
+    description: 'The options the conversion was asked for; null for none.',
+  })
+  options: Record<string, string | number | boolean> | null;
+
   @ApiProperty({ description: 'The user asked to keep the result.' })
   saved: boolean;
 

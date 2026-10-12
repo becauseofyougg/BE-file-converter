@@ -3,7 +3,13 @@
 **Status:** implemented — see §10 for where the code lives
 **Date:** 2026-10-02
 **Owning service:** `conversion-service` (conversion, history), `api-gateway` (`/api/convert`)
-**Related:** [ARCHITECTURE.md](ARCHITECTURE.md) · [NON-FUNCTIONAL-REQUIREMENTS.md](NON-FUNCTIONAL-REQUIREMENTS.md) · [AUTHORIZATION.md](AUTHORIZATION.md)
+**Related:** [IMAGES.md](IMAGES.md) — PNG/JPEG/SVG on the same pipeline · [ARCHITECTURE.md](ARCHITECTURE.md) · [NON-FUNCTIONAL-REQUIREMENTS.md](NON-FUNCTIONAL-REQUIREMENTS.md) · [AUTHORIZATION.md](AUTHORIZATION.md)
+
+> **Since 2026-10-12** the pipeline also serves images. `/api/convert` accepts PNG, JPEG and SVG,
+> and an `options` field (a JSON object) for the directions that take settings. The text formats
+> take none, and sending any is a `400`. Recognising a format now weighs how sure each module is
+> (§3), and `/api/images/convert` is a route scoped to the image family. The details are in
+> [IMAGES.md](IMAGES.md); the rest of this document is unchanged.
 
 ---
 
@@ -94,6 +100,11 @@ result can be downloaded. It never holds the content.
 ---
 
 ## 3. Recognising the source format
+
+Every module is asked, and the surest answer wins: a binary signature (PNG, JPEG) beats an
+extension, which beats a specific content match (an `<svg>` root), which beats a generic one (a
+leading `{` or `<`). See [IMAGES.md §7](IMAGES.md#7-how-detection-was-changed-for-this). For
+the text formats:
 
 1. **By extension:** `.csv`, `.json`, `.xml`, `.yaml`, `.yml`, in any case. The extension is what
    the user meant.
@@ -230,7 +241,9 @@ replica left `PROCESSING` for more than 10 minutes.
 `FileConverter` (abstract) is the extension point. A module is a subclass provided by its own
 Nest module. On start-up `ConverterRegistry` finds every provider that extends it, through Nest's
 `DiscoveryService`, so there is no central list to keep in step. A module declares what it reads,
-what each format can become, how it recognises a file, and how it converts. The RPC contract, the
+what each format can become, how it recognises a file (and how sure it is), which options it
+takes (`checkOptions`, none by default), and how it converts. The image module is the second one
+built this way ([IMAGES.md](IMAGES.md)). The RPC contract, the
 gateway and `GET /api/convert/formats` do not change when a module is added. Two modules with the
 same id stop the service from booting.
 

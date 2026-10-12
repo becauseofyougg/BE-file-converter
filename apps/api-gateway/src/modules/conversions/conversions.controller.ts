@@ -8,7 +8,7 @@ import {
   Query,
   Req,
   Res,
-  StreamableFile,
+  type StreamableFile,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -29,10 +29,8 @@ import type {
 import { correlationIdFor } from '@core/messaging/correlation-id';
 import { CurrentUser, type RequestUser } from '../auth/request-user';
 import { ErrorResponseDto } from '../shared/api-responses.dto';
-import {
-  ConversionsService,
-  type DownloadableResult,
-} from './conversions.service';
+import { attachment, RESULT_TYPES } from './attachment';
+import { ConversionsService } from './conversions.service';
 import {
   ConversionFormatEntryDto,
   ConversionHistoryPageDto,
@@ -42,16 +40,6 @@ import {
 } from './dto/conversions.dto';
 
 const MINUTE_MS = 60_000;
-
-/** Header carrying the history id of the conversion a download came from. */
-export const CONVERSION_ID_HEADER = 'x-conversion-id';
-
-const RESULT_TYPES = [
-  'text/csv',
-  'application/json',
-  'application/xml',
-  'application/yaml',
-];
 
 /**
  * docs/CONVERSIONS.md. Under `/api`, unlike the older routes — the prefix is
@@ -80,10 +68,11 @@ export class ConversionsController {
     description: [
       'Upload one file and get it back converted, in the same response.',
       '',
-      'The source format is recognised from the file name (`.csv`, `.json`, `.xml`, `.yaml`/`.yml`), or',
-      'from the content for JSON and XML. Each source format has its own size limit, set by the',
-      'operator. Every conversion is recorded in the history; the result itself is kept only with',
-      '`save=true`. How data is mapped between the formats is in docs/CONVERSIONS.md.',
+      'Every registered format: CSV, JSON, XML, YAML, and the images (PNG, JPEG, SVG) that',
+      '`POST /api/images/convert` also serves. The source format is recognised from its signature',
+      '(PNG, JPEG), its file name, or its content (JSON, XML, SVG). Each source format has its own',
+      'size limit, set by the operator. Every conversion is recorded in the history; the result',
+      'itself is kept only with `save=true`. The rules are in docs/CONVERSIONS.md and docs/IMAGES.md.',
     ].join('\n'),
   })
   @ApiConsumes('multipart/form-data')
@@ -104,6 +93,12 @@ export class ConversionsController {
           default: false,
           description: 'Keep the result, to download again from the history.',
         },
+        options: {
+          type: 'string',
+          example: '{"quality":80}',
+          description:
+            'A JSON object of settings, for a direction that takes any — see `POST /api/images/convert`. Text formats take none.',
+        },
       },
     },
   })
@@ -117,7 +112,7 @@ export class ConversionsController {
   @ApiResponse({
     status: 400,
     description:
-      '`VALIDATION_FAILED` — the form is wrong; `UNSUPPORTED_CONVERSION` — no such target, or not from this source; `INVALID_SOURCE` — empty, not UTF-8, or not valid in its format.',
+      '`VALIDATION_FAILED` — the form or the options are wrong; `UNSUPPORTED_CONVERSION` — no such target, or not from this source; `INVALID_SOURCE` — empty, not UTF-8, or not valid in its format; `UNSAFE_SOURCE` — an SVG with scripts or external references; `IMAGE_TOO_LARGE` — over the pixel limits.',
     type: ErrorResponseDto,
   })
   @ApiResponse({
@@ -149,7 +144,7 @@ export class ConversionsController {
       correlationIdFor(request),
     );
 
-    return this.send(reply, result);
+    return attachment(reply, result);
   }
 
   @ApiOperation({
@@ -232,19 +227,6 @@ export class ConversionsController {
       correlationId: correlationIdFor(request),
     });
 
-    return this.send(reply, result);
-  }
-
-  private send(
-    reply: FastifyReply,
-    result: DownloadableResult,
-  ): StreamableFile {
-    void reply.header(CONVERSION_ID_HEADER, result.operationId);
-
-    return new StreamableFile(result.stream, {
-      type: result.file.contentType,
-      disposition: `attachment; filename="${result.file.fileName}"`,
-      length: result.file.size,
-    });
+    return attachment(reply, result);
   }
 }

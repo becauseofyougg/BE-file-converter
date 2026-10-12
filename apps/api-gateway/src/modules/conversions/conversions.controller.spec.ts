@@ -3,10 +3,8 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Readable } from 'node:stream';
 
 import type { RequestUser } from '../auth/request-user';
-import {
-  CONVERSION_ID_HEADER,
-  ConversionsController,
-} from './conversions.controller';
+import { CONVERSION_ID_HEADER } from './attachment';
+import { ConversionsController } from './conversions.controller';
 import type { ConversionsService } from './conversions.service';
 
 describe('ConversionsController', () => {

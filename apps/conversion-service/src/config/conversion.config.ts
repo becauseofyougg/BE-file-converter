@@ -53,6 +53,20 @@ export interface ConversionConfig
    * it, before the cleanup job deletes it.
    */
   CONVERSION_UNSAVED_RESULT_MINUTES?: number;
+
+  /**
+   * The largest image, in pixels per side, a conversion may produce — what an
+   * SVG is rasterised to, whether asked for or its own size.
+   */
+  IMAGE_MAX_WIDTH?: number;
+  IMAGE_MAX_HEIGHT?: number;
+
+  /**
+   * The most pixels an image may have, read or produced. Checked from the
+   * header before anything is decoded: the defence against a few kilobytes of
+   * PNG that unpack to gigabytes (a decompression bomb).
+   */
+  IMAGE_MAX_PIXELS?: number;
 }
 
 /** `CONVERSION_MAX_BYTES_CSV`, `CONVERSION_MAX_BYTES_YAML`, … */
@@ -104,6 +118,14 @@ export const conversionConfigSchema = Joi.object<ConversionConfig>({
     .min(1)
     .optional()
     .default(15),
+
+  IMAGE_MAX_WIDTH: Joi.number().integer().min(1).optional().default(8192),
+  IMAGE_MAX_HEIGHT: Joi.number().integer().min(1).optional().default(8192),
+  IMAGE_MAX_PIXELS: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .default(40_000_000),
 })
   // Per-format limits are named by the format, so they cannot be listed here;
   // they are still checked, so `CONVERSION_MAX_BYTES_CSV=10mb` fails the boot.

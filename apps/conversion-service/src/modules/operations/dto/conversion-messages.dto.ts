@@ -10,13 +10,18 @@ import {
   Max,
   MaxLength,
   Min,
+  registerDecorator,
   ValidateNested,
 } from 'class-validator';
 
+import { FormatFamily } from '@contracts/enums/conversion.enums';
 import {
   CONVERSION_HISTORY_LIMITS,
+  CONVERSION_OPTIONS_LIMITS,
+  type ConversionFormatsRequest,
   type ConversionHistoryRequest,
   type ConversionOperationRequest,
+  type ConversionOptions,
   type ConvertFileRequest,
 } from '@contracts/messages/conversion.messages';
 import { STORAGE_DRIVERS } from '@storage/file-storage';
@@ -62,9 +67,68 @@ export class ConvertFileMessageDto implements ConvertFileRequest {
   @IsBoolean()
   save: boolean;
 
+  @IsOptional()
+  @IsConversionOptions()
+  options?: ConversionOptions;
+
+  @IsOptional()
+  @IsIn(Object.values(FormatFamily))
+  family?: string;
+
   @IsString()
   @MaxLength(128)
   correlationId: string;
+}
+
+export class ConversionFormatsMessageDto implements ConversionFormatsRequest {
+  @IsOptional()
+  @IsIn(Object.values(FormatFamily))
+  family?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  correlationId?: string;
+}
+
+/**
+ * A flat object of short primitives, within `CONVERSION_OPTIONS_LIMITS`.
+ * What the options *mean* is the converter's to check; this only keeps the
+ * shape small and storable.
+ */
+function IsConversionOptions(): PropertyDecorator {
+  return (target, propertyName) =>
+    registerDecorator({
+      name: 'isConversionOptions',
+      target: target.constructor,
+      propertyName: propertyName as string,
+      validator: {
+        validate: (value: unknown) => isConversionOptions(value),
+        defaultMessage: () =>
+          `options must be an object of at most ${CONVERSION_OPTIONS_LIMITS.keys} short strings, numbers or booleans`,
+      },
+    });
+}
+
+export function isConversionOptions(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const entries = Object.entries(value);
+
+  return (
+    entries.length <= CONVERSION_OPTIONS_LIMITS.keys &&
+    entries.every(
+      ([key, item]) =>
+        key.length > 0 &&
+        key.length <= CONVERSION_OPTIONS_LIMITS.keyLength &&
+        (typeof item === 'boolean' ||
+          (typeof item === 'number' && Number.isFinite(item)) ||
+          (typeof item === 'string' &&
+            item.length <= CONVERSION_OPTIONS_LIMITS.valueLength)),
+    )
+  );
 }
 
 export class ConversionHistoryMessageDto implements ConversionHistoryRequest {

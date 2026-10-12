@@ -63,6 +63,21 @@ export interface StoredFile {
   driver: string;
 }
 
+/**
+ * Per-conversion settings, opaque to everything but the converter that
+ * reads them — `{ quality: 80 }` for a JPEG, nothing for CSV. Kept a flat bag
+ * of primitives so a new module's options are a new key, not a new type here.
+ * The converter validates them and refuses what it does not know.
+ */
+export type ConversionOptions = Record<string, string | number | boolean>;
+
+/** Bounds on the bag, checked at both ends of the wire. */
+export const CONVERSION_OPTIONS_LIMITS = {
+  keys: 16,
+  keyLength: 32,
+  valueLength: 64,
+} as const;
+
 export interface ConvertFileRequest {
   /** Chosen by the gateway, which already used it as the upload's key. */
   operationId: string;
@@ -75,7 +90,19 @@ export interface ConvertFileRequest {
   targetFormat: string;
   /** Keep the result in storage after this response. */
   save: boolean;
+  options?: ConversionOptions;
+  /**
+   * Only this family's formats, in and out — what a family's own route
+   * (`/api/images/convert`) sends. Absent: every registered format.
+   */
+  family?: string;
   correlationId: string;
+}
+
+export interface ConversionFormatsRequest {
+  /** Only this family's directions. Absent: all of them. */
+  family?: string;
+  correlationId?: string;
 }
 
 /** What the gateway streams back to the client. */
@@ -116,6 +143,8 @@ export interface ConversionOperationRecord {
     size: number | null;
     checksum: string | null;
   };
+  /** What the conversion was asked to do beyond the formats; `null` for nothing. */
+  options: ConversionOptions | null;
   /** The user asked to keep the result. */
   saved: boolean;
   /** The result can still be downloaded from the history. */

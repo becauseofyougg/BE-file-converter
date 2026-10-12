@@ -1,6 +1,9 @@
 import type { ConversionOperation } from '@prisma-clients/conversion';
 
-import type { ConversionOperationRecord } from '@contracts/messages/conversion.messages';
+import type {
+  ConversionOperationRecord,
+  ConversionOptions,
+} from '@contracts/messages/conversion.messages';
 
 /** A row as the history shows it: no keys, no driver, no correlation id. */
 export function toOperationRecord(
@@ -20,6 +23,7 @@ export function toOperationRecord(
       size: row.resultSize === null ? null : Number(row.resultSize),
       checksum: row.resultChecksum,
     },
+    options: (row.options as ConversionOptions | null) ?? null,
     saved: row.saved,
     resultAvailable: isDownloadable(row),
     error:

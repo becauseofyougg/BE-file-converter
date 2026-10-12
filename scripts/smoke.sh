@@ -146,7 +146,7 @@ printf '<people><person><id>1</id><name>Ann</name></person><person><id>2</id><na
 printf -- '- id: "1"\n  name: Ann\n- id: "2"\n  name: Smith, J\n' > "$DIR/people.yaml"
 
 check "GET /api/convert/formats" 200 "$(req GET /api/convert/formats)"
-check "  four sources, three targets each" "csv:json,xml,yaml|json:csv,xml,yaml|xml:csv,json,yaml|yaml:csv,json,xml" \
+check "  every format, text and image" "csv:json,xml,yaml|jpeg:png|json:csv,xml,yaml|png:jpeg|svg:jpeg,png|xml:csv,json,yaml|yaml:csv,json,xml" \
   "$(field "b.map(e=>e.source+':'+e.target.join(',')).join('|')")"
 check "POST /api/convert without a session" 401 "$(curl -s -o /dev/null -w '%{http_code}' -F "file=@$DIR/people.csv" -F targetFormat=json "$GW/api/convert")"
 
@@ -193,6 +193,55 @@ check "nothing left unacknowledged on conversion.rpc" 0 "$(docker exec "$MQ" rab
 if [ "$(docker compose exec -T api-gateway printenv STORAGE_DRIVER | tr -d '\r')" = local ]; then
   check "no upload left behind (local storage)" 0 "$(docker compose exec -T api-gateway sh -c "ls /var/lib/file-converter/storage/uploads/$USER_ID 2> /dev/null | wc -l" | tr -d ' \r')"
 fi
+
+echo "== images (docs/IMAGES.md)"
+image() { # file name target [extra curl args…] -> status; body in $DIR/body, headers in $DIR/headers
+  local file=$1 name=$2 target=$3
+  shift 3
+  curl -s -o "$DIR/body" -D "$DIR/headers" -w '%{http_code}' -b "$JAR" \
+    -F "file=@$file;filename=$name" -F "targetFormat=$target" "$@" "$GW/api/images/convert"
+}
+picture() { # -> "format widthxheight" of the last body, read from its bytes
+  node -e "
+    const b=require('fs').readFileSync('$DIR/body');
+    if (b[0]===0x89&&b[1]===0x50) { console.log('png '+b.readUInt32BE(16)+'x'+b.readUInt32BE(20)); process.exit(); }
+    if (b[0]===0xff&&b[1]===0xd8) {
+      for (let i=2;i<b.length;) { const m=b[i+1], l=b.readUInt16BE(i+2);
+        if (m>=0xc0&&m<=0xc2) { console.log('jpeg '+b.readUInt16BE(i+7)+'x'+b.readUInt16BE(i+5)); process.exit(); } i+=2+l; }
+    }
+    console.log('neither')"
+}
+node -e "const fs=require('fs');
+  fs.writeFileSync('$DIR/dot.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWNgYPjfgIpJFgAAGlkX8UscpbkAAAAASUVORK5CYII=','base64'));
+  fs.writeFileSync('$DIR/dot.jpg', Buffer.from('/9j/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAEAAYDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAACAn/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwC7AB9OJ//Z','base64'));
+  // A decompression bomb: a valid PNG header claiming 50000 x 50000.
+  const zlib=require('zlib'), chunk=(type,data)=>{const len=Buffer.alloc(4);len.writeUInt32BE(data.length);const td=Buffer.concat([Buffer.from(type),data]);const crc=Buffer.alloc(4);crc.writeUInt32BE(zlib.crc32(td));return Buffer.concat([len,td,crc]);};
+  const ihdr=Buffer.alloc(13); ihdr.writeUInt32BE(50000,0); ihdr.writeUInt32BE(50000,4); ihdr[8]=8; ihdr[9]=6;
+  fs.writeFileSync('$DIR/bomb.png', Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),chunk('IHDR',ihdr),chunk('IDAT',zlib.deflateSync(Buffer.alloc(16))),chunk('IEND',Buffer.alloc(0))]));"
+printf '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><rect x="10" y="10" width="30" height="30" fill="red"/></svg>' > "$DIR/logo.svg"
+printf '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><script>alert(1)</script></svg>' > "$DIR/script.svg"
+printf '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><image href="file:///etc/passwd" width="10" height="10"/></svg>' > "$DIR/leak.svg"
+printf '<svg xmlns="http://www.w3.org/2000/svg" width="20000" height="10"/>' > "$DIR/wide.svg"
+
+check "GET /api/images/convert/formats" 200 "$(req GET /api/images/convert/formats)"
+check "  only the image directions" "jpeg:png|png:jpeg|svg:jpeg,png" "$(field "b.map(e=>e.source+':'+e.target.join(',')).join('|')")"
+check "PNG → JPEG" "200|jpeg 4x4" "$(image "$DIR/dot.png" dot.png jpeg)|$(picture)"
+check "  served as converted.jpeg, image/jpeg" 'attachment; filename="converted.jpeg"|image/jpeg' "$(header content-disposition)|$(header content-type)"
+check "JPEG → PNG" "200|png 6x4" "$(image "$DIR/dot.jpg" dot.jpg png)|$(picture)"
+check "  recognised by content, whatever the name" "200|png 6x4" "$(image "$DIR/dot.jpg" photo.png png)|$(picture)"
+check "SVG → PNG at its own size" "200|png 100x50" "$(image "$DIR/logo.svg" logo.svg png)|$(picture)"
+check "SVG → PNG, width given, height scaled" "200|png 400x200" "$(image "$DIR/logo.svg" logo.svg png -F width=400)|$(picture)"
+check "SVG → JPEG, options as JSON" "200|jpeg 300x300" "$(image "$DIR/logo.svg" logo.svg jpeg -F 'options={"width":300,"height":300,"quality":60,"background":"#00ff00"}')|$(picture)"
+check "  the same through /api/convert" 200 "$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -F "file=@$DIR/logo.svg;filename=logo.svg" -F targetFormat=png -F 'options={"width":50}' "$GW/api/convert")"
+check "anything → SVG is refused" "400|UNSUPPORTED_CONVERSION" "$(image "$DIR/dot.png" dot.png svg)|$(field b.code)"
+check "an option that does not apply is refused" "400|VALIDATION_FAILED" "$(image "$DIR/dot.jpg" dot.jpg png -F quality=80)|$(field b.code)"
+check "an SVG with a script" "400|UNSAFE_SOURCE" "$(image "$DIR/script.svg" script.svg png)|$(field b.code)"
+check "an SVG reaching for a local file" "400|UNSAFE_SOURCE" "$(image "$DIR/leak.svg" leak.svg png)|$(field b.code)"
+check "an SVG wider than allowed" "400|IMAGE_TOO_LARGE" "$(image "$DIR/wide.svg" wide.svg png)|$(field b.code)"
+check "a decompression bomb, refused from its header" "400|IMAGE_TOO_LARGE" "$(image "$DIR/bomb.png" bomb.png jpeg)|$(field b.code)"
+check "a CSV sent to the image route is 415" "415|UNSUPPORTED_FORMAT" "$(image "$DIR/people.csv" people.csv png)|$(field b.code)"
+check "image options kept in the history" '{"width":400}' \
+  "$(req GET '/api/convert/history?limit=100' > /dev/null; field "JSON.stringify(b.items.find(i=>i.options&&i.options.width===400)?.options)")"
 
 echo "== logout"
 check "POST /auth/logout" 204 "$(req POST /auth/logout)"

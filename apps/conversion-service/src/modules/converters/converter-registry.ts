@@ -2,7 +2,11 @@ import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { DiscoveryService } from '@nestjs/core';
 
 import type { ConversionFormatEntry } from '@contracts/messages/conversion.messages';
-import { FileConverter, type FormatDescriptor } from './file-converter';
+import {
+  type DetectedFormat,
+  FileConverter,
+  type FormatDescriptor,
+} from './file-converter';
 
 /**
  * Every conversion module the application has, found rather than listed.
@@ -11,6 +15,10 @@ import { FileConverter, type FormatDescriptor } from './file-converter';
  * module registers by existing and being imported, and there is no central
  * list to keep in step. Two modules claiming the same id is a mistake and
  * stops the service from starting.
+ *
+ * Most questions take an optional `family`, which narrows the answer to that
+ * family's modules: what `/api/images/convert` asks, where `/api/convert`
+ * asks about everything.
  */
 @Injectable()
 export class ConverterRegistry implements OnModuleInit {
@@ -53,11 +61,11 @@ export class ConverterRegistry implements OnModuleInit {
     });
   }
 
-  /** `GET /api/convert/formats`: every source, with every target it can reach. */
-  formats(): ConversionFormatEntry[] {
+  /** `GET …/formats`: every source, with every target it can reach. */
+  formats(family?: string): ConversionFormatEntry[] {
     const targets = new Map<string, Set<string>>();
 
-    for (const converter of this.converters) {
+    for (const converter of this.modules(family)) {
       for (const format of converter.sourceFormats()) {
         const reachable = targets.get(format.id) ?? new Set<string>();
 
@@ -74,32 +82,50 @@ export class ConverterRegistry implements OnModuleInit {
       .sort((a, b) => a.source.localeCompare(b.source));
   }
 
-  /** Every format some module can write. */
-  knownTargets(): string[] {
-    return [...new Set(this.formats().flatMap((entry) => entry.target))].sort();
+  /**
+   * Every format named anywhere — read or written. A target outside this is
+   * not a format at all; one inside it may still be unreachable from a given
+   * source (`png` → `svg`), which is a different refusal.
+   */
+  knownFormats(family?: string): string[] {
+    const entries = this.formats(family);
+
+    return [
+      ...new Set([
+        ...entries.map((entry) => entry.source),
+        ...entries.flatMap((entry) => entry.target),
+      ]),
+    ].sort();
   }
 
   /** Every format some module can read. */
-  sourceFormats(): FormatDescriptor[] {
-    return this.converters.flatMap((converter) => [
+  sourceFormats(family?: string): FormatDescriptor[] {
+    return this.modules(family).flatMap((converter) => [
       ...converter.sourceFormats(),
     ]);
   }
 
-  /** The first module that recognises the file decides what it is. */
-  detect(fileName: string, head: Buffer): string | null {
-    for (const converter of this.converters) {
-      const format = converter.detect(fileName, head);
+  /**
+   * What the file is, by the surest answer any module gives (`DETECTION`):
+   * a PNG signature beats a `.csv` name, and a `.svg` name beats XML's
+   * guess from a leading `<`. Ties go to the module registered first.
+   * With a family, only its modules are asked.
+   */
+  detect(fileName: string, head: Buffer, family?: string): string | null {
+    let best: DetectedFormat | null = null;
 
-      if (format) {
-        return format;
+    for (const converter of this.modules(family)) {
+      const found = converter.detect(fileName, head);
+
+      if (found && (!best || found.confidence > best.confidence)) {
+        best = found;
       }
     }
 
-    return null;
+    return best?.format ?? null;
   }
 
-  /** A format some module can write: its type and extension. */
+  /** A format some module reads or writes: its type and extension. */
   describe(format: string): FormatDescriptor | undefined {
     for (const converter of this.converters) {
       const descriptor = converter.describe(format);
@@ -112,9 +138,23 @@ export class ConverterRegistry implements OnModuleInit {
     return undefined;
   }
 
-  converterFor(source: string, target: string): FileConverter | undefined {
-    return this.converters.find((converter) =>
+  converterFor(
+    source: string,
+    target: string,
+    family?: string,
+  ): FileConverter | undefined {
+    return this.modules(family).find((converter) =>
       converter.supports(source, target),
     );
+  }
+
+  private modules(family?: string): FileConverter[] {
+    return family
+      ? // `family` arrives as text from the wire, already checked against
+        // `FormatFamily` by the RPC's validation.
+        this.converters.filter(
+          (converter) => (converter.family as string) === family,
+        )
+      : this.converters;
   }
 }

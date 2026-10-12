@@ -17,6 +17,7 @@ import type { PrismaService } from '../../database/prisma.service';
 import { ConverterRegistry } from '../converters/converter-registry';
 import type { WorkerRunner } from '../converters/worker-runner';
 import { DataConverter } from '../data/data.converter';
+import { ImageConverter } from '../image/image.converter';
 import { transform, type TransformRequest } from '../data/data-transform';
 import { ConversionLimits } from './conversion-limits';
 import { ConversionOperationsService } from './conversion-operations.service';
@@ -101,6 +102,9 @@ describe('ConversionOperationsService', () => {
       CONVERSION_MAX_BYTES_DEFAULT: 1024 * 1024,
       CONVERSION_MAX_DEPTH: 64,
       CONVERSION_WORKER_MEMORY_MB: 128,
+      IMAGE_MAX_WIDTH: 1000,
+      IMAGE_MAX_HEIGHT: 1000,
+      IMAGE_MAX_PIXELS: 1_000_000,
     };
 
     const config = {
@@ -116,7 +120,10 @@ describe('ConversionOperationsService', () => {
     const registry = new ConverterRegistry({} as DiscoveryService);
 
     jest.spyOn(registry['logger'], 'log').mockImplementation(() => undefined);
-    registry.register([new DataConverter(runner, config)]);
+    registry.register([
+      new DataConverter(runner, config),
+      new ImageConverter(config),
+    ]);
 
     service = new ConversionOperationsService(
       table.prisma,
@@ -296,7 +303,9 @@ describe('ConversionOperationsService', () => {
         expect(error).toMatchObject({
           code: ERROR_CODES.UNSUPPORTED_CONVERSION,
           httpStatus: 400,
-          details: { supported: ['csv', 'json', 'xml', 'yaml'] },
+          details: {
+            supported: ['csv', 'jpeg', 'json', 'png', 'svg', 'xml', 'yaml'],
+          },
         });
       });
 
@@ -502,6 +511,132 @@ describe('ConversionOperationsService', () => {
       expect(service['logger'].warn).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'conversion.storage_delete_failed' }),
       );
+    });
+  });
+
+  describe('images, and a route held to one family', () => {
+    const SVG =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="5" height="5"/></svg>';
+
+    it('converts an image through the same pipeline, keeping its options', async () => {
+      const request = await upload(SVG, {
+        name: 'logo.svg',
+        targetFormat: 'jpeg',
+        options: { width: 40, quality: 90 },
+      });
+
+      const response = await service.convert(request);
+
+      expect(response.result).toMatchObject({
+        contentType: 'image/jpeg',
+        fileName: 'converted.jpeg',
+      });
+      expect(response.operation).toMatchObject({
+        source: { format: 'svg' },
+        options: { width: 40, quality: 90 },
+      });
+      expect(
+        table.conversionOperation.create.mock.calls[0][0].data.options,
+      ).toEqual({
+        width: 40,
+        quality: 90,
+      });
+    });
+
+    it('records no options as none', async () => {
+      const response = await service.convert(
+        await upload('a\r\n1\r\n', { options: {} }),
+      );
+
+      expect(response.operation.options).toBeNull();
+    });
+
+    it('recognises an SVG over XML, whatever the module order', async () => {
+      const response = await service.convert(
+        await upload(SVG, { name: 'upload', targetFormat: 'png' }),
+      );
+
+      expect(response.operation.source.format).toBe('svg');
+    });
+
+    it('refuses options the direction does not take, before converting', async () => {
+      const error = await refusal(
+        await upload('a\r\n1\r\n', { options: { quality: 80 } }),
+      );
+
+      expect(error).toMatchObject({
+        code: ERROR_CODES.VALIDATION_FAILED,
+        httpStatus: 400,
+        details: { errors: ['quality does not apply to csv → json'] },
+      });
+    });
+
+    it('a family route takes only its formats as targets', async () => {
+      const error = await refusal(
+        await upload(SVG, {
+          name: 'logo.svg',
+          targetFormat: 'json',
+          family: 'image',
+        }),
+      );
+
+      expect(error).toMatchObject({
+        code: ERROR_CODES.UNSUPPORTED_CONVERSION,
+        details: { supported: ['jpeg', 'png', 'svg'] },
+      });
+    });
+
+    it('a family route takes only its formats as sources: 415', async () => {
+      const error = await refusal(
+        await upload('a\r\n1\r\n', { targetFormat: 'png', family: 'image' }),
+      );
+
+      expect(error).toMatchObject({
+        code: ERROR_CODES.UNSUPPORTED_FORMAT,
+        httpStatus: 415,
+        details: { supported: ['png', 'jpeg', 'svg'] },
+      });
+    });
+
+    it('a family route reads an <svg> in a .xml file as the SVG it is', async () => {
+      const response = await service.convert(
+        await upload(SVG, {
+          name: 'drawing.xml',
+          targetFormat: 'png',
+          family: 'image',
+        }),
+      );
+
+      expect(response.operation.source.format).toBe('svg');
+    });
+
+    it('names what a source can become when the pair does not go', async () => {
+      const png = Buffer.from(
+        (
+          await new ImageConverter({
+            getNumber: (key: string) => env[key],
+          } as never).convert({
+            data: Buffer.from(SVG),
+            source: 'svg',
+            target: 'png',
+            options: {},
+            timeoutMs: 5_000,
+          })
+        ).data,
+      );
+      const error = await refusal(
+        await upload(png, {
+          name: 'a.png',
+          targetFormat: 'svg',
+          family: 'image',
+        }),
+      );
+
+      expect(error).toMatchObject({
+        code: ERROR_CODES.UNSUPPORTED_CONVERSION,
+        message: 'Cannot convert png to svg',
+        details: { supported: ['jpeg'] },
+      });
     });
   });
 

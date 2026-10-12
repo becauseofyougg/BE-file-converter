@@ -25,6 +25,12 @@ import { setupOpenApi } from '../src/openapi';
 
 const USER = '6f1c2f34-0a4b-4c38-9d3a-1c5b2e7f8a90';
 
+const IMAGE_FORMATS = [
+  { source: 'jpeg', target: ['png'] },
+  { source: 'png', target: ['jpeg'] },
+  { source: 'svg', target: ['jpeg', 'png'] },
+];
+
 /**
  * `/api/convert` through the real HTTP stack — Fastify, the multipart
  * plugin and its limits, the guards, the error envelope — with storage in a
@@ -42,7 +48,11 @@ describe('/api/convert (e2e)', () => {
   const conversion = {
     send: (pattern: string, payload: unknown) => {
       if (pattern === CONVERSION_RPC_PATTERNS.FORMATS) {
-        return from([[{ source: 'csv', target: ['json', 'xml', 'yaml'] }]]);
+        return from([
+          (payload as { family?: string }).family === 'image'
+            ? IMAGE_FORMATS
+            : [{ source: 'csv', target: ['json', 'xml', 'yaml'] }],
+        ]);
       }
 
       if (pattern === CONVERSION_RPC_PATTERNS.CONVERT) {
@@ -286,6 +296,91 @@ describe('/api/convert (e2e)', () => {
 
     expect(code(response.body)).toBe(ERROR_CODES.UNSUPPORTED_FORMAT);
     expect(await filesIn('uploads')).toEqual([]);
+  });
+
+  describe('/api/images/convert', () => {
+    const postImage = () =>
+      request(app.getHttpServer())
+        .post('/api/images/convert')
+        .set('Authorization', `Bearer ${token}`);
+
+    it('needs a session', async () => {
+      await request(app.getHttpServer())
+        .post('/api/images/convert')
+        .field('targetFormat', 'png')
+        .attach('file', Buffer.from('<svg/>'), 'a.svg')
+        .expect(401);
+    });
+
+    it('holds the request to images, and takes the options as fields', async () => {
+      await postImage()
+        .field('targetFormat', 'jpeg')
+        .field('quality', '70')
+        .field('width', '512')
+        .field('background', '#000000')
+        .attach('file', Buffer.from('<svg/>'), 'logo.svg')
+        .expect(200);
+
+      expect(lastRequest).toMatchObject({
+        family: 'image',
+        targetFormat: 'jpeg',
+        options: { quality: 70, width: 512, background: '#000000' },
+        source: { name: 'logo.svg' },
+      });
+    });
+
+    it('takes them as one JSON field too', async () => {
+      await postImage()
+        .field('targetFormat', 'png')
+        .field('options', '{"width":64,"background":"transparent"}')
+        .attach('file', Buffer.from('<svg/>'), 'logo.svg')
+        .expect(200);
+
+      expect(lastRequest!.options).toEqual({
+        width: 64,
+        background: 'transparent',
+      });
+    });
+
+    it('refuses both ways at once', async () => {
+      const response = await postImage()
+        .field('targetFormat', 'jpeg')
+        .field('quality', '70')
+        .field('options', '{"quality":80}')
+        .attach('file', Buffer.from('<svg/>'), 'logo.svg')
+        .expect(400);
+
+      expect(code(response.body)).toBe(ERROR_CODES.VALIDATION_FAILED);
+      expect(lastRequest).toBeUndefined();
+    });
+
+    it('lists only the image directions', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/images/convert/formats')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(response.body).toEqual(IMAGE_FORMATS);
+    });
+  });
+
+  it('/api/convert takes options as JSON, but not as separate fields', async () => {
+    await post()
+      .field('targetFormat', 'jpeg')
+      .field('options', '{"quality":90}')
+      .attach('file', Buffer.from('<svg/>'), 'logo.svg')
+      .expect(200);
+
+    expect(lastRequest).toMatchObject({ options: { quality: 90 } });
+    expect(lastRequest).not.toHaveProperty('family');
+
+    const response = await post()
+      .field('targetFormat', 'jpeg')
+      .field('quality', '90')
+      .attach('file', Buffer.from('<svg/>'), 'logo.svg')
+      .expect(400);
+
+    expect(code(response.body)).toBe(ERROR_CODES.VALIDATION_FAILED);
   });
 
   it('lists the formats in the shape the spec fixes', async () => {

@@ -46,8 +46,12 @@ interface SourceFacts {
  * The order of the checks is the order of the error codes a client can get,
  * and it is fixed: an unknown target (400), a source no module recognises
  * (415), a source over its format's limit (413), a pair that does not go
- * (400), a file that does not parse (400), a conversion that does not finish
- * in time (422). Each stops the run before anything more expensive happens.
+ * (400), options that do not apply (400), a file that does not parse or is
+ * unsafe (400), a conversion that does not finish in time (422). Each stops
+ * the run before anything more expensive happens.
+ *
+ * A request with a `family` (`/api/images/convert`) is held to that family's
+ * formats throughout: an image route does not convert CSV.
  *
  * The upload is deleted whatever happens. The result is kept if the user
  * asked to save it; otherwise only long enough for the gateway to stream it,
@@ -80,6 +84,7 @@ export class ConversionOperationsService {
         targetFormat: target.slice(0, 16),
         storageDriver: this.storage.driver,
         saved: request.save,
+        options: hasOptions(request.options) ? request.options : undefined,
         correlationId: request.correlationId,
       },
     });
@@ -177,30 +182,46 @@ export class ConversionOperationsService {
     startedAt: number,
     facts: SourceFacts,
   ): Promise<ConvertFileResponse> {
-    if (!this.registry.knownTargets().includes(target)) {
+    const known = this.registry.knownFormats(request.family);
+
+    if (!known.includes(target)) {
       throw new AppError(
         ERROR_CODES.UNSUPPORTED_CONVERSION,
         `"${request.targetFormat}" is not a format this service converts to`,
         400,
-        { supported: this.registry.knownTargets() },
+        { supported: known },
       );
     }
 
     const source = await this.readSource(request, facts);
-    const converter = this.registry.converterFor(source.format, target);
+    const converter = this.registry.converterFor(
+      source.format,
+      target,
+      request.family,
+    );
 
     if (!converter) {
       throw new AppError(
         ERROR_CODES.UNSUPPORTED_CONVERSION,
         `Cannot convert ${source.format} to ${target}`,
         400,
+        {
+          supported: this.registry
+            .formats(request.family)
+            .find((entry) => entry.source === source.format)?.target,
+        },
       );
     }
+
+    const options = request.options ?? {};
+
+    converter.checkOptions(source.format, target, options);
 
     const output = await converter.convert({
       data: source.data,
       source: source.format,
       target,
+      options,
       // The limit is on the whole request, and reading the upload already
       // spent some of it.
       timeoutMs: Math.max(
@@ -334,6 +355,7 @@ export class ConversionOperationsService {
     const format = this.registry.detect(
       request.source.name,
       head.subarray(0, HEAD_BYTES),
+      request.family,
     );
 
     facts.format = format;
@@ -345,7 +367,7 @@ export class ConversionOperationsService {
         415,
         {
           supported: this.registry
-            .sourceFormats()
+            .sourceFormats(request.family)
             .map((descriptor) => descriptor.id),
         },
       );
@@ -531,6 +553,12 @@ export class ConversionOperationsService {
       );
     }
   }
+}
+
+function hasOptions(
+  options: ConvertFileRequest['options'],
+): options is NonNullable<ConvertFileRequest['options']> {
+  return options !== undefined && Object.keys(options).length > 0;
 }
 
 function sha256(data: Buffer): string {

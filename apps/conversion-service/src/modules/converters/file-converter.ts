@@ -1,4 +1,7 @@
 import type { FormatFamily } from '@contracts/enums/conversion.enums';
+import type { ConversionOptions } from '@contracts/messages/conversion.messages';
+import { ERROR_CODES } from '@contracts/errors/error-codes';
+import { AppError } from '@core/errors/app-error';
 
 /** A format as the outside world sees it: what it is called and what it looks like. */
 export interface FormatDescriptor {
@@ -10,10 +13,33 @@ export interface FormatDescriptor {
   mimeType: string;
 }
 
+/**
+ * How sure a module is that a file is in one of its formats. The registry
+ * asks every module and takes the surest answer, so the order modules are
+ * registered in never decides what a file is.
+ */
+export const DETECTION = {
+  /** Magic bytes that only one format starts with: PNG, JPEG. */
+  SIGNATURE: 30,
+  /** The file name says so — it is what the user meant. */
+  EXTENSION: 20,
+  /** Content that settles it within a broader kind: an `<svg>` root is XML too. */
+  CONTENT_SPECIFIC: 15,
+  /** Content that is merely consistent with the format: a leading `{` or `<`. */
+  CONTENT: 10,
+} as const;
+
+export interface DetectedFormat {
+  format: string;
+  confidence: number;
+}
+
 export interface ConversionInput {
   data: Buffer;
   source: string;
   target: string;
+  /** Already checked by `checkOptions`. */
+  options: ConversionOptions;
   /** The whole conversion must finish inside this, or it is abandoned. */
   timeoutMs: number;
 }
@@ -40,7 +66,7 @@ export abstract class FileConverter {
   /** Unique across modules; appears in logs. */
   abstract readonly id: string;
 
-  /** Which work queue and deployment the module belongs to. */
+  /** Which family the module belongs to — what a family's own route serves. */
   abstract readonly family: FormatFamily;
 
   /** Every format this module can read, and therefore detect. */
@@ -49,18 +75,43 @@ export abstract class FileConverter {
   /** What a file in `source` can be turned into. Empty when it cannot. */
   abstract targetsFor(source: string): readonly string[];
 
-  /** A format this module can write, for the result's type and extension. */
+  /** A format this module reads or writes: its type and extension. */
   abstract describe(format: string): FormatDescriptor | undefined;
 
   /**
-   * Which of this module's formats a file is, from its name and first bytes.
-   * `null` when it is none of them — the registry then asks the next module.
+   * Which of this module's formats a file is, from its name and first bytes,
+   * and how sure that is (`DETECTION`). `null` when it is none of them.
    */
-  abstract detect(fileName: string, head: Buffer): string | null;
+  abstract detect(fileName: string, head: Buffer): DetectedFormat | null;
 
   abstract convert(input: ConversionInput): Promise<ConversionOutput>;
+
+  /**
+   * Refuses options this direction does not take, or values out of range,
+   * with a `400 VALIDATION_FAILED` naming each. Called before the conversion
+   * is attempted. By default a module takes no options at all.
+   */
+  checkOptions(
+    source: string,
+    target: string,
+    options: ConversionOptions,
+  ): void {
+    const names = Object.keys(options);
+
+    if (names.length > 0) {
+      throw invalidOptions(
+        names.map((name) => `${name} does not apply to ${source} → ${target}`),
+      );
+    }
+  }
 
   supports(source: string, target: string): boolean {
     return this.targetsFor(source).includes(target);
   }
+}
+
+export function invalidOptions(errors: string[]): AppError {
+  return new AppError(ERROR_CODES.VALIDATION_FAILED, 'Invalid options', 400, {
+    errors,
+  });
 }

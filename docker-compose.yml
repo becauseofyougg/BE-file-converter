@@ -209,6 +209,13 @@ services:
       CONVERSION_MAX_BYTES_DEFAULT: ${CONVERSION_MAX_BYTES_DEFAULT:-10485760}
       CONVERSION_SYNC_TIMEOUT_MS: ${CONVERSION_SYNC_TIMEOUT_MS:-30000}
       CONVERSION_RPC_CONCURRENCY: ${CONVERSION_RPC_CONCURRENCY:-4}
+      # Images — docs/IMAGES.md §4. Per-format byte limits as above
+      # (CONVERSION_MAX_BYTES_PNG / _JPEG / _SVG); SVG is text, and a few
+      # megabytes of it is already a very large drawing.
+      CONVERSION_MAX_BYTES_SVG: ${CONVERSION_MAX_BYTES_SVG:-2097152}
+      IMAGE_MAX_WIDTH: ${IMAGE_MAX_WIDTH:-8192}
+      IMAGE_MAX_HEIGHT: ${IMAGE_MAX_HEIGHT:-8192}
+      IMAGE_MAX_PIXELS: ${IMAGE_MAX_PIXELS:-40000000}
     volumes:
       - converter_storage:/var/lib/file-converter/storage
     depends_on:

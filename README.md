@@ -23,8 +23,9 @@ same DTOs that validate requests, so the two cannot drift apart. It is served ou
 | Email: eight mails, send log, retry ladder | done | [NOTIFICATIONS](docs/NOTIFICATIONS.md) |
 | Health, rate limiting, validation, CORS, logging, OpenAPI, ≥ 80 % coverage | done | [NFR](docs/NON-FUNCTIONAL-REQUIREMENTS.md) |
 | Text conversion: CSV ⇄ JSON ⇄ XML ⇄ YAML (all 12 pairs), synchronous, with history and optional saving | done | [CONVERSIONS](docs/CONVERSIONS.md) |
+| Image conversion: PNG ⇄ JPEG, SVG → PNG/JPEG, with quality, size and background; SVG safety, decompression-bomb limits | done | [IMAGES](docs/IMAGES.md) |
 | Storage: S3/MinIO or a local directory, chosen by `STORAGE_DRIVER` | done | [CONVERSIONS §6](docs/CONVERSIONS.md#6-streaming-threads-and-storage) |
-| Queued conversion of heavy families (image, document, audio/video): job queue, progress | not started | [ARCHITECTURE §5](docs/ARCHITECTURE.md) |
+| Queued conversion of heavy families (documents, audio/video): job queue, progress | not started | [ARCHITECTURE §5](docs/ARCHITECTURE.md) |
 | Password reset, in-app notifications / SSE | not started | |
 
 Each spec ends with a **Still open** section listing what is deliberately left for later.
@@ -57,6 +58,13 @@ docker compose up -d --build          # POSTGRES_PORT=5433 if a local Postgres h
    ```
 
    `GET /api/convert/formats` lists the directions, `GET /api/convert/history` your conversions.
+   Images have their own route as well:
+
+   ```bash
+   curl -b cookies.txt -F file=@logo.svg -F targetFormat=png -F width=512 \
+     -OJ http://localhost:3000/api/images/convert    # saves converted.png
+   ```
+
    `STORAGE_DRIVER=local docker compose up -d` keeps the files in a volume instead of MinIO.
 
 `npm run smoke` does all of the above and more — email change, erasure, what the outbox keeps —

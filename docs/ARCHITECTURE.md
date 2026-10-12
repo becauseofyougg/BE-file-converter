@@ -161,8 +161,9 @@ not block a 200 ms thumbnail resize, and the image worker's container does not s
 
 ## 5. The conversion pipeline
 
-> **Implemented so far: the synchronous path**, for the data family (CSV/JSON/XML/YAML). See
-> [CONVERSIONS.md](CONVERSIONS.md). The gateway asks over `conversion.rpc` and waits, the
+> **Implemented so far: the synchronous path**, for the data family (CSV/JSON/XML/YAML, see
+> [CONVERSIONS.md](CONVERSIONS.md)) and the image family (PNG/JPEG/SVG with sharp, see
+> [IMAGES.md](IMAGES.md)). The gateway asks over `conversion.rpc` and waits, the
 > conversion runs on its own worker thread, and every attempt is a `conversion_operations` row.
 > The registry in §5.3 exists as the abstract `FileConverter` plus `ConverterRegistry`, which
 > discovers its modules through Nest's `DiscoveryService`. The queued job pipeline below
@@ -298,6 +299,7 @@ Token tables store **hashes**, never the raw token.
 | `GET` | `/admin/users` | cursor-paginated directory, `users@list` only |
 | `POST` | `/api/convert` | **implemented**: multipart file + `targetFormat` + `save` → `200` with the converted file ([CONVERSIONS.md](CONVERSIONS.md)) |
 | `GET` | `/api/convert/formats` · `/api/convert/history[/:id[/download]]` | **implemented**: the matrix from the registry; own history; saved results |
+| `POST` · `GET` | `/api/images/convert` · `/api/images/convert/formats` | **implemented**: the same pipeline scoped to images, options as form fields too ([IMAGES.md](IMAGES.md)) |
 | `GET` | `/formats` | (planned, queued path) conversion matrix, derived from the registry |
 | `POST` | `/conversions` | multipart: file + `targetFormat` + options → **`202` `{ jobId }`** |
 | `GET` | `/conversions` | own jobs, paginated, filter by status |

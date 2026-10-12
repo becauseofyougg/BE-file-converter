@@ -10,6 +10,7 @@ import { ERROR_CODES } from '@contracts/errors/error-codes';
 import {
   CONVERSION_RPC_PATTERNS,
   type ConversionFormatEntry,
+  type ConversionFormatsRequest,
   type ConversionHistoryPage,
   type ConversionHistoryRequest,
   type ConversionOperationRecord,
@@ -23,12 +24,10 @@ import { StorageResolver } from '@storage/storage-resolver';
 import type { GatewayConfig } from '../../config/gateway.config';
 import { CONVERSION_CLIENT } from '../../messaging/messaging.module';
 import { sendRpc } from '../../messaging/rpc';
+import { type ConvertRoute, parseFields } from './convert-fields';
 import { readUpload } from './upload-reader';
 
-/** Lower-case word, as the formats are named. */
-const FORMAT_ID = /^[a-z0-9]{1,16}$/;
-
-/** `GET /api/convert/formats` changes only with a deploy; asking once a minute is plenty. */
+/** `GET …/formats` changes only with a deploy; asking once a minute is plenty. */
 const FORMATS_TTL_MS = 60_000;
 
 /** A converted file, ready to stream to the client. */
@@ -49,10 +48,11 @@ export interface DownloadableResult {
 @Injectable()
 export class ConversionsService {
   private readonly logger = new Logger(ConversionsService.name);
-  private formatsCache: {
-    entries: ConversionFormatEntry[];
-    at: number;
-  } | null = null;
+  /** Per family; `''` is every family. */
+  private readonly formatsCache = new Map<
+    string,
+    { entries: ConversionFormatEntry[]; at: number }
+  >();
 
   constructor(
     @Inject(CONVERSION_CLIENT) private readonly conversion: ClientProxy,
@@ -65,6 +65,7 @@ export class ConversionsService {
     request: FastifyRequest,
     userId: string,
     correlationId: string,
+    route: ConvertRoute = {},
   ): Promise<DownloadableResult> {
     const operationId = randomUUID();
     const key = this.storage.buildKey(userId, operationId);
@@ -77,7 +78,7 @@ export class ConversionsService {
         maxBytes,
       );
 
-      const { targetFormat, save } = parseFields(upload.fields);
+      const { targetFormat, save, options } = parseFields(upload.fields, route);
 
       if (upload.size === 0) {
         throw new AppError(
@@ -102,6 +103,8 @@ export class ConversionsService {
           },
           targetFormat,
           save,
+          ...(options ? { options } : {}),
+          ...(route.family ? { family: route.family } : {}),
           correlationId,
         },
         this.config.getNumber('CONVERSION_RPC_TIMEOUT_MS'),
@@ -123,20 +126,25 @@ export class ConversionsService {
     }
   }
 
-  async formats(correlationId: string): Promise<ConversionFormatEntry[]> {
-    if (
-      this.formatsCache &&
-      Date.now() - this.formatsCache.at < FORMATS_TTL_MS
-    ) {
-      return this.formatsCache.entries;
+  async formats(
+    correlationId: string,
+    family?: string,
+  ): Promise<ConversionFormatEntry[]> {
+    const cached = this.formatsCache.get(family ?? '');
+
+    if (cached && Date.now() - cached.at < FORMATS_TTL_MS) {
+      return cached.entries;
     }
 
     const entries = await sendRpc<
       ConversionFormatEntry[],
-      { correlationId: string }
-    >(this.conversion, CONVERSION_RPC_PATTERNS.FORMATS, { correlationId });
+      ConversionFormatsRequest
+    >(this.conversion, CONVERSION_RPC_PATTERNS.FORMATS, {
+      ...(family ? { family } : {}),
+      correlationId,
+    });
 
-    this.formatsCache = { entries, at: Date.now() };
+    this.formatsCache.set(family ?? '', { entries, at: Date.now() });
 
     return entries;
   }
@@ -230,51 +238,4 @@ export class ConversionsService {
       });
     }
   }
-}
-
-/**
- * The form fields, checked by hand: they arrive as multipart text, past the
- * reach of the `ValidationPipe`. Unknown fields are refused, as they are on
- * every JSON route.
- */
-export function parseFields(fields: Record<string, string>): {
-  targetFormat: string;
-  save: boolean;
-} {
-  const unknown = Object.keys(fields).filter(
-    (name) => !['targetFormat', 'save'].includes(name),
-  );
-
-  if (unknown.length > 0) {
-    throw new AppError(
-      ERROR_CODES.VALIDATION_FAILED,
-      'Validation failed',
-      400,
-      [...unknown.map((name) => `property ${name} should not exist`)],
-    );
-  }
-
-  const targetFormat = (fields.targetFormat ?? '').trim().toLowerCase();
-
-  if (!FORMAT_ID.test(targetFormat)) {
-    throw new AppError(
-      ERROR_CODES.VALIDATION_FAILED,
-      'Validation failed',
-      400,
-      ['targetFormat must be a format name, such as "json"'],
-    );
-  }
-
-  const save = (fields.save ?? 'false').trim().toLowerCase();
-
-  if (!['true', 'false', '1', '0'].includes(save)) {
-    throw new AppError(
-      ERROR_CODES.VALIDATION_FAILED,
-      'Validation failed',
-      400,
-      ['save must be true or false'],
-    );
-  }
-
-  return { targetFormat, save: save === 'true' || save === '1' };
 }

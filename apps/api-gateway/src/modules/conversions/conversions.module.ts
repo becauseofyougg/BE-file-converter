@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { StorageModule } from '@storage/storage.module';
 import { ConversionsController } from './conversions.controller';
 import { ConversionsService } from './conversions.service';
+import { ImagesController } from './images.controller';
 
 /**
  * `/api/convert`. StorageModule because the upload is written, and the
@@ -10,7 +11,7 @@ import { ConversionsService } from './conversions.service';
  */
 @Module({
   imports: [StorageModule],
-  controllers: [ConversionsController],
+  controllers: [ConversionsController, ImagesController],
   providers: [ConversionsService],
 })
 export class ConversionsModule {}
