@@ -415,7 +415,6 @@ describe('/api/convert (e2e)', () => {
       expect.arrayContaining([
         '/api/convert',
         '/api/convert/formats',
-        '/api/convert/history',
         '/api/convert/history/{operationId}',
         '/api/convert/history/{operationId}/download',
       ]),

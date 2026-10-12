@@ -281,16 +281,15 @@ describe('ConversionsService', () => {
     expect(send.mock.calls[0][1]).not.toHaveProperty('family');
   });
 
-  it('forwards the history requests', async () => {
+  it('forwards a request for one operation', async () => {
     send.mockReturnValue(of('answer'));
 
-    await service.history({ userId: USER });
     await service.operation({ userId: USER, operationId: 'op' });
 
-    expect(send.mock.calls.map((call) => call[0])).toEqual([
-      CONVERSION_RPC_PATTERNS.HISTORY_LIST,
-      CONVERSION_RPC_PATTERNS.HISTORY_GET,
-    ]);
+    expect(send).toHaveBeenCalledWith(CONVERSION_RPC_PATTERNS.HISTORY_GET, {
+      userId: USER,
+      operationId: 'op',
+    });
   });
 
   it('opens a saved result for download', async () => {

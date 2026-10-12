@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsISO8601,
   IsOptional,
   IsString,
   IsUUID,
@@ -19,10 +20,14 @@ import {
   CONVERSION_HISTORY_LIMITS,
   CONVERSION_OPTIONS_LIMITS,
   type ConversionFormatsRequest,
-  type ConversionHistoryRequest,
   type ConversionOperationRequest,
   type ConversionOptions,
   type ConvertFileRequest,
+  TRANSFORMATION_STATUSES,
+  TRANSFORMATION_TYPES,
+  type TransformationHistoryRequest,
+  type TransformationStatus,
+  type TransformationType,
 } from '@contracts/messages/conversion.messages';
 import { STORAGE_DRIVERS } from '@storage/file-storage';
 
@@ -131,7 +136,11 @@ export function isConversionOptions(value: unknown): boolean {
   );
 }
 
-export class ConversionHistoryMessageDto implements ConversionHistoryRequest {
+/**
+ * The history query. Shapes only — which formats exist is the registry's to
+ * say, and `TransformationHistoryService` checks it.
+ */
+export class TransformationHistoryMessageDto implements TransformationHistoryRequest {
   @IsUUID()
   userId: string;
 
@@ -145,6 +154,32 @@ export class ConversionHistoryMessageDto implements ConversionHistoryRequest {
   @Min(1)
   @Max(CONVERSION_HISTORY_LIMITS.max)
   limit?: number;
+
+  @IsOptional()
+  @IsIn([...TRANSFORMATION_TYPES])
+  type?: TransformationType;
+
+  @IsOptional()
+  @IsString()
+  @Matches(FORMAT_ID)
+  sourceFormat?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(FORMAT_ID)
+  targetFormat?: string;
+
+  @IsOptional()
+  @IsIn([...TRANSFORMATION_STATUSES])
+  status?: TransformationStatus;
+
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  createdAtFrom?: string;
+
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  createdAtTo?: string;
 
   @IsOptional()
   @IsString()

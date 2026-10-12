@@ -67,6 +67,12 @@ export interface ConversionConfig
    * PNG that unpack to gigabytes (a decompression bomb).
    */
   IMAGE_MAX_PIXELS?: number;
+
+  /**
+   * How long the transformation history is kept, in days — the record and a
+   * saved result alike. Set by whoever runs the service.
+   */
+  HISTORY_RETENTION_DAYS?: number;
 }
 
 /** `CONVERSION_MAX_BYTES_CSV`, `CONVERSION_MAX_BYTES_YAML`, … */
@@ -126,6 +132,7 @@ export const conversionConfigSchema = Joi.object<ConversionConfig>({
     .min(1)
     .optional()
     .default(40_000_000),
+  HISTORY_RETENTION_DAYS: Joi.number().integer().min(1).optional().default(90),
 })
   // Per-format limits are named by the format, so they cannot be listed here;
   // they are still checked, so `CONVERSION_MAX_BYTES_CSV=10mb` fails the boot.

@@ -5,7 +5,6 @@ import {
   HttpStatus,
   Param,
   Post,
-  Query,
   Req,
   Res,
   type StreamableFile,
@@ -23,7 +22,6 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import type {
   ConversionFormatEntry,
-  ConversionHistoryPage,
   ConversionOperationRecord,
 } from '@contracts/messages/conversion.messages';
 import { correlationIdFor } from '@core/messaging/correlation-id';
@@ -33,8 +31,6 @@ import { attachment, RESULT_TYPES } from './attachment';
 import { ConversionsService } from './conversions.service';
 import {
   ConversionFormatEntryDto,
-  ConversionHistoryPageDto,
-  ConversionHistoryQueryDto,
   ConversionOperationDto,
   ConversionParamsDto,
 } from './dto/conversions.dto';
@@ -157,27 +153,6 @@ export class ConversionsController {
   @Throttle({ default: { limit: 120, ttl: MINUTE_MS } })
   formats(@Req() request: FastifyRequest): Promise<ConversionFormatEntry[]> {
     return this.conversions.formats(correlationIdFor(request));
-  }
-
-  @ApiOperation({
-    summary: 'Your conversions, newest first',
-    description:
-      'Every conversion you have run, saved or not, including failures.',
-  })
-  @ApiResponse({ status: 200, type: ConversionHistoryPageDto })
-  @Get('history')
-  @Throttle({ default: { limit: 120, ttl: MINUTE_MS } })
-  history(
-    @Query() query: ConversionHistoryQueryDto,
-    @CurrentUser() user: RequestUser,
-    @Req() request: FastifyRequest,
-  ): Promise<ConversionHistoryPage> {
-    return this.conversions.history({
-      userId: user.id,
-      cursor: query.cursor,
-      limit: query.limit,
-      correlationId: correlationIdFor(request),
-    });
   }
 
   @ApiOperation({ summary: 'One of your conversions' })

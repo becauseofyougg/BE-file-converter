@@ -38,6 +38,9 @@ model ConversionOperation {
   id     String                    @id @db.Uuid
   userId String                    @map("user_id") @db.Uuid
   status ConversionOperationStatus @default(PROCESSING)
+  /// The converter family that ran it (`data`, `image`) — the history's
+  /// `type`. Known from the route, the target, or the converter.
+  family String                    @default("data") @db.VarChar(16)
 
   /// The client's filename, as sent. Shown in the history; never a key.
   sourceName     String  @map("source_name") @db.VarChar(255)
@@ -79,7 +82,11 @@ model ConversionOperation {
   @@index([userId, createdAt(sort: Desc), id(sort: Desc)], map: "ix_conversion_operations_user_history")
   /// The cleanup job's scan for results past their time.
   @@index([resultExpiresAt], map: "ix_conversion_operations_result_expires_at")
-  /// …and for operations a crash left half-done.
+  /// The history filtered by outcome or by type: a user's errors, a user's
+  /// images, each still in page order.
+  @@index([userId, status, createdAt(sort: Desc), id(sort: Desc)], map: "ix_conversion_operations_user_status_history")
+  @@index([userId, family, createdAt(sort: Desc), id(sort: Desc)], map: "ix_conversion_operations_user_family_history")
+  /// …and for operations a crash left half-done, and for the retention sweep.
   @@index([status, createdAt], map: "ix_conversion_operations_status_created_at")
   @@map("conversion_operations")
 }

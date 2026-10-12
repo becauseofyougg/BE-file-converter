@@ -34,7 +34,8 @@ The ones the API in §8 of the architecture actually demands:
 
 | Table | Index | Query it serves |
 |---|---|---|
-| `conversion_operations` | `(user_id, created_at DESC, id DESC)` | `GET /api/convert/history`, cursor-paged with `id` as the tie-break |
+| `conversion_operations` | `(user_id, created_at DESC, id DESC)` | `GET /api/transformations/history`, cursor-paged with `id` as the tie-break, and its date ranges |
+| `conversion_operations` | `(user_id, status, …)` · `(user_id, family, …)` | the same history filtered by `status` or `type` |
 | `conversion_operations` | `(result_expires_at)` · `(status, created_at)` | the clean-up job: unsaved results past their time, operations a crash left `PROCESSING` |
 | `conversion_jobs` | `(user_id, created_at DESC)` | `GET /conversions` — the user's job list, paginated |
 | `conversion_jobs` | `(status, expires_at)` | TTL cleanup job scanning for expired results |

@@ -1,8 +1,10 @@
 import type { ConversionOperation } from '@prisma-clients/conversion';
 
-import type {
-  ConversionOperationRecord,
-  ConversionOptions,
+import {
+  type ConversionOperationRecord,
+  type ConversionOptions,
+  type TransformationHistoryItem,
+  transformationType,
 } from '@contracts/messages/conversion.messages';
 
 /** A row as the history shows it: no keys, no driver, no correlation id. */
@@ -33,6 +35,24 @@ export function toOperationRecord(
     durationMs: row.durationMs,
     createdAt: row.createdAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
+  };
+}
+
+/** A finished row as the transformation history shows it — docs/TRANSFORMATION-HISTORY.md. */
+export function toHistoryItem(
+  row: ConversionOperation,
+): TransformationHistoryItem {
+  return {
+    id: row.id,
+    type: transformationType(row.family),
+    sourceFormat: row.sourceFormat,
+    targetFormat: row.targetFormat,
+    status: row.status === 'COMPLETED' ? 'success' : 'error',
+    fileSize: Number(row.sourceSize),
+    durationMs: row.durationMs ?? 0,
+    ...(row.errorCode === null ? {} : { errorCode: row.errorCode }),
+    resultAvailable: isDownloadable(row),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 

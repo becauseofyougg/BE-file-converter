@@ -30,7 +30,7 @@ Every route needs a session. Images are served at both:
 - **`POST /api/convert`**: every format, images included. Options are accepted only as the
   `options` JSON field.
 
-Both write to the same history (`GET /api/convert/history`).
+Both write to the same history ([TRANSFORMATION-HISTORY.md](TRANSFORMATION-HISTORY.md)), where images are `type=image`.
 
 ### `POST /api/images/convert`
 

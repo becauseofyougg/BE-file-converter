@@ -15,6 +15,7 @@ import {
   type StartEmailChangeResponse,
   type UserListItemRecord,
   type UserProfileRecord,
+  type UserStatusRecord,
 } from '@contracts/messages/users.messages';
 import { RpcAppExceptionFilter } from '@core/errors/rpc-app-exception.filter';
 import { settleRpc } from '@core/messaging/rmq-ack';
@@ -23,7 +24,10 @@ import {
   ConfirmDeletionMessageDto,
   DeleteUserMessageDto,
 } from './dto/delete-user.dto';
-import { GetUserProfileMessageDto } from './dto/get-profile.dto';
+import {
+  GetUserProfileMessageDto,
+  GetUserStatusMessageDto,
+} from './dto/get-profile.dto';
 import { ListUsersMessageDto } from './dto/list-users.dto';
 import { UserListService } from './user-list.service';
 import {
@@ -80,6 +84,15 @@ export class UsersController {
    * completed handling, acked rather than requeued, since it would fail
    * identically forever.
    */
+  /** docs/TRANSFORMATION-HISTORY.md §3 — existence only, for another service's route. */
+  @MessagePattern(USERS_PATTERNS.GET_STATUS)
+  async getStatus(
+    @Payload(messageValidationPipe) dto: GetUserStatusMessageDto,
+    @Ctx() context: RmqContext,
+  ): Promise<UserStatusRecord> {
+    return settleRpc(context, () => this.profiles.getStatus(dto.userId));
+  }
+
   @MessagePattern(USERS_PATTERNS.GET_PROFILE)
   async getProfile(
     @Payload(messageValidationPipe) dto: GetUserProfileMessageDto,

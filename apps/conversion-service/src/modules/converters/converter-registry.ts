@@ -125,6 +125,17 @@ export class ConverterRegistry implements OnModuleInit {
     return best?.format ?? null;
   }
 
+  /**
+   * The family of the module that reads or writes `format`, for recording
+   * what kind of transformation an operation was before it is known which
+   * module will run it. `undefined` for a format nobody knows.
+   */
+  familyOf(format: string): string | undefined {
+    return this.converters.find(
+      (converter) => converter.describe(format) !== undefined,
+    )?.family;
+  }
+
   /** A format some module reads or writes: its type and extension. */
   describe(format: string): FormatDescriptor | undefined {
     for (const converter of this.converters) {
