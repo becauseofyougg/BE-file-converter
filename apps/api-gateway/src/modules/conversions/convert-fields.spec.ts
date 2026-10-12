@@ -67,12 +67,29 @@ describe('parseFields', () => {
           {
             targetFormat: 'png',
             width: ' 512 ',
-            height: '1e3',
-            background: '#000',
+            quality: '80',
+            background: ' #000 ',
           },
           IMAGES,
         ).options,
-      ).toEqual({ width: 512, height: '1e3', background: '#000' });
+      ).toEqual({ width: 512, quality: 80, background: '#000' });
+    });
+
+    it.each([
+      [{ width: '1e3' }, 'width must be a whole number'],
+      [{ height: '-5' }, 'height must be a whole number'],
+      [{ quality: '0' }, 'quality must not be less than 1'],
+      [{ quality: '101' }, 'quality must not be greater than 100'],
+      [
+        { background: 'x'.repeat(65) },
+        'background must be shorter than or equal to 64 characters',
+      ],
+    ])('refuses a separate field of the wrong shape: %j', (field, message) => {
+      // Every rule the value breaks is reported: `-5` is not a whole number
+      // in the form's sense and is under the minimum.
+      expect(
+        failure({ targetFormat: 'png', ...field }, IMAGES).details,
+      ).toContain(message);
     });
 
     it('leaves them out when there are none', () => {
@@ -114,8 +131,7 @@ describe('parseFields', () => {
           options: JSON.stringify({ a: { b: 1 }, c: 'x'.repeat(65), d: 1 }),
         }).details,
       ).toEqual([
-        'options.a must be a short string, a number or a boolean',
-        'options.c must be a short string, a number or a boolean',
+        'options.a, options.c: each option must be a short string, a number or a boolean, under a short name',
       ]);
 
       const many = Object.fromEntries(
@@ -127,13 +143,22 @@ describe('parseFields', () => {
       ).toEqual(['options may have at most 16 keys']);
     });
 
-    it('refuses an empty or over-long key', () => {
+    it('refuses an empty or over-long key, naming both', () => {
+      const [message] = failure({
+        targetFormat: 'png',
+        options: JSON.stringify({ '': 1, ['k'.repeat(33)]: 2 }),
+      }).details as string[];
+
+      expect(message).toMatch(/^options\., options\.k{33}: /);
+    });
+
+    it('is validated by class-validator, like every other input', () => {
       expect(
-        failure({
-          targetFormat: 'png',
-          options: JSON.stringify({ '': 1, ['k'.repeat(33)]: 2 }),
-        }).details,
-      ).toHaveLength(2);
+        failure({ targetFormat: 'png', save: 'maybe', mode: 'x' }).details,
+      ).toEqual([
+        'property mode should not exist',
+        'save must be true or false',
+      ]);
     });
   });
 });

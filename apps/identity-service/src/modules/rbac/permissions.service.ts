@@ -210,7 +210,10 @@ export class PermissionsService {
   }
 
   private async assertNameFree(name: string): Promise<void> {
-    const clash = await this.db.permission.findUnique({ where: { name } });
+    const clash = await this.db.permission.findUnique({
+      where: { name },
+      select: { id: true },
+    });
 
     if (clash) {
       throw new AppError(

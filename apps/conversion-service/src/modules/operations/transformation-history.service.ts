@@ -11,7 +11,12 @@ import {
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { PrismaService } from '../../database/prisma.service';
 import { ConverterRegistry } from '../converters/converter-registry';
-import { decodeCursor, encodeCursor, toHistoryItem } from './operation-record';
+import {
+  decodeCursor,
+  encodeCursor,
+  HISTORY_ITEM_SELECT,
+  toHistoryItem,
+} from './operation-record';
 
 /**
  * One user's finished transformations, newest first — docs/TRANSFORMATION-HISTORY.md.
@@ -66,6 +71,7 @@ export class TransformationHistoryService {
         : where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
+      select: HISTORY_ITEM_SELECT,
     });
 
     const page = rows.slice(0, limit);

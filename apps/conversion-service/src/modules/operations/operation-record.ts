@@ -39,10 +39,41 @@ export function toOperationRecord(
   };
 }
 
+/** What deciding whether a result can be downloaded needs of a row. */
+type DownloadFacts = Pick<
+  ConversionOperation,
+  'status' | 'saved' | 'resultKey' | 'resultExpiresAt'
+>;
+
+/**
+ * The columns a history item is built from — and the only ones the history
+ * query reads. A page is up to a hundred rows; there is no reason to carry
+ * each one's file name, checksums, options and storage key across for
+ * nothing.
+ */
+export const HISTORY_ITEM_SELECT = {
+  id: true,
+  family: true,
+  sourceFormat: true,
+  targetFormat: true,
+  status: true,
+  sourceSize: true,
+  durationMs: true,
+  errorCode: true,
+  saved: true,
+  fileId: true,
+  resultKey: true,
+  resultExpiresAt: true,
+  createdAt: true,
+} as const satisfies Partial<Record<keyof ConversionOperation, true>>;
+
+export type HistoryItemRow = Pick<
+  ConversionOperation,
+  keyof typeof HISTORY_ITEM_SELECT
+>;
+
 /** A finished row as the transformation history shows it — docs/TRANSFORMATION-HISTORY.md. */
-export function toHistoryItem(
-  row: ConversionOperation,
-): TransformationHistoryItem {
+export function toHistoryItem(row: HistoryItemRow): TransformationHistoryItem {
   return {
     id: row.id,
     type: transformationType(row.family),
@@ -61,10 +92,7 @@ export function toHistoryItem(
  * Only a saved result is offered from the history, and only until its time:
  * an unsaved one is transient, and a saved one lasts as long as the history.
  */
-export function isDownloadable(
-  row: ConversionOperation,
-  now = new Date(),
-): boolean {
+export function isDownloadable(row: DownloadFacts, now = new Date()): boolean {
   return (
     row.status === 'COMPLETED' &&
     row.saved &&
@@ -74,7 +102,7 @@ export function isDownloadable(
 }
 
 export function hasExpired(
-  row: ConversionOperation,
+  row: Pick<ConversionOperation, 'resultExpiresAt'>,
   now = new Date(),
 ): boolean {
   return row.resultExpiresAt !== null && row.resultExpiresAt <= now;

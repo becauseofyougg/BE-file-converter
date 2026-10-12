@@ -5,7 +5,7 @@ import type { TransformationHistoryRequest } from '@contracts/messages/conversio
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { PrismaService } from '../../database/prisma.service';
 import type { ConverterRegistry } from '../converters/converter-registry';
-import { encodeCursor } from './operation-record';
+import { encodeCursor, HISTORY_ITEM_SELECT } from './operation-record';
 import { TransformationHistoryService } from './transformation-history.service';
 
 const USER = '0b6c3c6e-55d4-4f5e-8f2a-6a4c1d2e3f40';
@@ -174,7 +174,29 @@ describe('TransformationHistoryService', () => {
       where: { userId: USER, status: { in: ['COMPLETED', 'FAILED'] } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 21,
+      select: HISTORY_ITEM_SELECT,
     });
+  });
+
+  /** A page is up to a hundred rows: none of what an item leaves out is read. */
+  it('reads only the columns an item is built from', async () => {
+    await list();
+
+    const columns = Object.keys(
+      findMany.mock.calls[0][0].select as Record<string, true>,
+    );
+
+    for (const left of [
+      'sourceName',
+      'sourceChecksum',
+      'resultChecksum',
+      'options',
+      'storageDriver',
+      'errorMessage',
+      'correlationId',
+    ]) {
+      expect(columns).not.toContain(left);
+    }
   });
 
   it('pages with a cursor at the last item', async () => {
