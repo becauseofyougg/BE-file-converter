@@ -60,7 +60,8 @@ export class ConversionCleanupJob {
           .delete('results', row.resultKey!);
         await this.prisma.conversionOperation.update({
           where: { id: row.id },
-          data: { resultKey: null, resultExpiresAt: null },
+          // The expiry stays: it records when the file went.
+          data: { resultKey: null },
         });
         removed += 1;
       } catch (error) {

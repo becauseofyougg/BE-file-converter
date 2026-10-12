@@ -3,8 +3,12 @@ import type { ClientProxy } from '@nestjs/microservices';
 
 import { AppError } from '@core/errors/app-error';
 import { decideAccess } from '@core/rbac/rbac-policy';
+import { StorageResolver } from '@storage/storage-resolver';
 import {
   CONVERSION_RPC_PATTERNS,
+  type ConversionOperationRecord,
+  type ConversionOperationRequest,
+  type ConversionResultFile,
   TRANSFORMATIONS_READ_PERMISSION,
   type TransformationHistoryFilters,
   type TransformationHistoryPage,
@@ -22,6 +26,10 @@ import {
   IDENTITY_CLIENT,
 } from '../../messaging/messaging.module';
 import { sendRpc } from '../../messaging/rpc';
+import {
+  type DownloadableResult,
+  openResult,
+} from '../conversions/result-stream';
 import { RbacConfigCache } from '../rbac/rbac-config.cache';
 
 export interface HistoryQuery extends TransformationHistoryFilters {
@@ -60,6 +68,7 @@ export class TransformationsService {
     @Inject(CONVERSION_CLIENT) private readonly conversion: ClientProxy,
     @Inject(IDENTITY_CLIENT) private readonly identity: ClientProxy,
     private readonly rbac: RbacConfigCache,
+    private readonly resolver: StorageResolver,
   ) {}
 
   async history(
@@ -71,11 +80,7 @@ export class TransformationsService {
     const targetUserId = scope.kind === 'self' ? actor.id : scope.targetUserId;
 
     try {
-      if (scope.kind === 'admin') {
-        this.assertMayReadOthers(actor);
-      }
-
-      await this.assertActive(targetUserId, scope, correlationId);
+      await this.authorise(actor, scope, targetUserId, correlationId);
 
       const page = await sendRpc<
         TransformationHistoryPage,
@@ -101,6 +106,88 @@ export class TransformationsService {
 
       throw error;
     }
+  }
+
+  /** One of the caller's own operations, in full — docs/SAVED-RESULTS.md §2. */
+  operation(
+    actor: RequestUser,
+    operationId: string,
+    correlationId: string,
+  ): Promise<ConversionOperationRecord> {
+    return sendRpc<ConversionOperationRecord, ConversionOperationRequest>(
+      this.conversion,
+      CONVERSION_RPC_PATTERNS.HISTORY_GET,
+      { userId: actor.id, operationId, correlationId },
+    );
+  }
+
+  /**
+   * A saved result, own or — with `transformations@read` — anyone's:
+   * docs/SAVED-RESULTS.md. The same order as the list: authority, then the
+   * user, then the record, looked up by owner **and** id, so an id belonging
+   * to someone else is the same 404 as one that does not exist.
+   *
+   * Audited once the transfer ends, with how many bytes went and how long it
+   * took; a refusal is audited at once.
+   */
+  async download(
+    actor: RequestUser,
+    scope: HistoryScope,
+    operationId: string,
+    correlationId: string,
+  ): Promise<DownloadableResult> {
+    const targetUserId = scope.kind === 'self' ? actor.id : scope.targetUserId;
+    const startedAt = Date.now();
+    const audit = { actor, scope, targetUserId, operationId, startedAt };
+
+    try {
+      await this.authorise(actor, scope, targetUserId, correlationId);
+
+      const file = await sendRpc<
+        ConversionResultFile,
+        ConversionOperationRequest
+      >(this.conversion, CONVERSION_RPC_PATTERNS.HISTORY_RESULT, {
+        userId: targetUserId,
+        operationId,
+        correlationId,
+      });
+      const stream = await openResult(this.resolver, file, this.logger);
+
+      let completed = false;
+
+      stream.once('end', () => {
+        completed = true;
+      });
+      stream.once('close', () =>
+        this.auditDownload(audit, completed ? 200 : 499, file),
+      );
+
+      return { file, stream, operationId };
+    } catch (error) {
+      this.auditDownload(
+        audit,
+        error instanceof AppError ? error.httpStatus : 500,
+      );
+
+      throw error;
+    }
+  }
+
+  /**
+   * The access order shared by every read: authority first (another user's
+   * records need `transformations@read`), existence only then.
+   */
+  private async authorise(
+    actor: RequestUser,
+    scope: HistoryScope,
+    targetUserId: string,
+    correlationId: string,
+  ): Promise<void> {
+    if (scope.kind === 'admin') {
+      this.assertMayReadOthers(actor);
+    }
+
+    await this.assertActive(targetUserId, scope, correlationId);
   }
 
   private assertMayReadOthers(actor: RequestUser): void {
@@ -171,6 +258,44 @@ export class TransformationsService {
       },
       status,
       returned,
+    };
+
+    if (status === 200) {
+      this.logger.log(entry);
+    } else {
+      this.logger.warn(entry);
+    }
+  }
+
+  /**
+   * The download's audit line. `status` 499 is a transfer the client gave up
+   * on part-way — the response had started, so it is not an error status the
+   * client saw, but it is not a completed download either.
+   */
+  private auditDownload(
+    context: {
+      actor: RequestUser;
+      scope: HistoryScope;
+      targetUserId: string;
+      operationId: string;
+      startedAt: number;
+    },
+    status: number,
+    file?: ConversionResultFile,
+  ): void {
+    const entry = {
+      event: 'transformations.file.download',
+      actorUserId: context.actor.id,
+      ...(context.scope.kind === 'admin'
+        ? { targetUserId: context.targetUserId }
+        : {}),
+      scope: context.scope.kind,
+      transformationId: context.operationId,
+      fileId: file?.fileId ?? null,
+      fileSize: file?.size ?? null,
+      status,
+      result: status === 200 ? 'success' : 'failure',
+      durationMs: Date.now() - context.startedAt,
     };
 
     if (status === 200) {

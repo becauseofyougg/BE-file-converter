@@ -111,6 +111,8 @@ export interface ConversionResultFile extends StoredFile {
   contentType: string;
   fileName: string;
   size: number;
+  /** A saved file's identifier — for the audit line; absent for one not kept. */
+  fileId?: string;
 }
 
 export interface ConvertFileResponse {
@@ -146,8 +148,14 @@ export interface ConversionOperationRecord {
   };
   /** What the conversion was asked to do beyond the formats; `null` for nothing. */
   options: ConversionOptions | null;
-  /** The user asked to keep the result. */
+  /**
+   * The result was kept. Asked for with `save=true`, and refused only when
+   * it is larger than saved files may be — the response says so in
+   * `X-Result-Saved`.
+   */
   saved: boolean;
+  /** The kept file, while it can still be downloaded; `null` otherwise. */
+  fileId: string | null;
   /** The result can still be downloaded from the history. */
   resultAvailable: boolean;
   error: { code: string; message: string } | null;
@@ -218,8 +226,12 @@ export interface TransformationHistoryItem {
   fileSize: number;
   durationMs: number;
   errorCode?: string;
-  /** A saved result can be downloaded: `GET /api/convert/history/:id/download`. */
-  resultAvailable: boolean;
+  /**
+   * The saved file, while it can be downloaded —
+   * `GET /api/transformations/history/:id/download`. `null` when the result
+   * was not saved, or its time has passed.
+   */
+  fileId: string | null;
   createdAt: string;
 }
 

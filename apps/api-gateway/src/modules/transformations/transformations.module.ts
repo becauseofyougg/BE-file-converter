@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { StorageModule } from '@storage/storage.module';
 import {
   AdminTransformationsController,
   TransformationsController,
@@ -12,6 +13,8 @@ import { TransformationsService } from './transformations.service';
  * `RbacModule`; both RPC clients from the global `MessagingModule`.
  */
 @Module({
+  // Saved results are streamed from wherever they were written.
+  imports: [StorageModule],
   controllers: [TransformationsController, AdminTransformationsController],
   providers: [TransformationsService],
 })

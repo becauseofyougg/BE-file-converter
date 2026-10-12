@@ -73,6 +73,12 @@ export interface ConversionConfig
    * saved result alike. Set by whoever runs the service.
    */
   HISTORY_RETENTION_DAYS?: number;
+
+  /**
+   * The largest result kept with `save=true`. A larger one is still returned
+   * to the client, just not kept — docs/SAVED-RESULTS.md.
+   */
+  CONVERSION_MAX_SAVED_BYTES?: number;
 }
 
 /** `CONVERSION_MAX_BYTES_CSV`, `CONVERSION_MAX_BYTES_YAML`, … */
@@ -132,6 +138,11 @@ export const conversionConfigSchema = Joi.object<ConversionConfig>({
     .min(1)
     .optional()
     .default(40_000_000),
+  CONVERSION_MAX_SAVED_BYTES: Joi.number()
+    .integer()
+    .min(1)
+    .optional()
+    .default(50 * 1024 * 1024),
   HISTORY_RETENTION_DAYS: Joi.number().integer().min(1).optional().default(90),
 })
   // Per-format limits are named by the format, so they cannot be listed here;

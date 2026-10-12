@@ -25,6 +25,7 @@ same DTOs that validate requests, so the two cannot drift apart. It is served ou
 | Text conversion: CSV ⇄ JSON ⇄ XML ⇄ YAML (all 12 pairs), synchronous, with history and optional saving | done | [CONVERSIONS](docs/CONVERSIONS.md) |
 | Image conversion: PNG ⇄ JPEG, SVG → PNG/JPEG, with quality, size and background; SVG safety, decompression-bomb limits | done | [IMAGES](docs/IMAGES.md) |
 | Transformation history: own, and any user's with `transformations@read`; filters, cursor paging, audit, retention | done | [TRANSFORMATION-HISTORY](docs/TRANSFORMATION-HISTORY.md) |
+| Saved results: `save=true`, download from the history (own, or any with `transformations@read`), expiry with the history | done | [SAVED-RESULTS](docs/SAVED-RESULTS.md) |
 | Storage: S3/MinIO or a local directory, chosen by `STORAGE_DRIVER` | done | [CONVERSIONS §6](docs/CONVERSIONS.md#6-streaming-threads-and-storage) |
 | Queued conversion of heavy families (documents, audio/video): job queue, progress | not started | [ARCHITECTURE §5](docs/ARCHITECTURE.md) |
 | Password reset, in-app notifications / SSE | not started | |

@@ -17,7 +17,8 @@
 
 CSV, JSON, XML and YAML, each to each of the other three: twelve directions. A user uploads one
 file and gets the converted file back **in the same response**. Every attempt is recorded in their
-history, failures included. The result is kept only if they ask for it (`save=true`).
+history, failures included. The result is kept only if they ask for it (`save=true`) — see
+[SAVED-RESULTS.md](SAVED-RESULTS.md); the response says whether it was (`X-Result-Saved`).
 
 This is the synchronous path: small text files, a 30-second budget. The queued path for heavy
 families (images, documents, audio/video), with `conversion_jobs`, progress events and the
@@ -90,8 +91,7 @@ This list is built from whatever converter modules are registered (§8), not mai
 | Route | |
 |---|---|
 | `GET /api/transformations/history` | the list: newest first, filtered, cursor-paged — replaced the earlier `GET /api/convert/history` list; see [TRANSFORMATION-HISTORY.md](TRANSFORMATION-HISTORY.md) |
-| `GET /api/convert/history/:id` | one entry; `404 JOB_NOT_FOUND` for an id that is not yours |
-| `GET /api/convert/history/:id/download` | a saved result; `404 RESULT_NOT_SAVED` if it was not saved or did not succeed |
+| `GET /api/transformations/history/:id[/download]` | one entry in full, and a saved result — see [SAVED-RESULTS.md](SAVED-RESULTS.md); both moved from `/api/convert/history/:id` |
 
 An entry holds the file name, the formats, the sizes, SHA-256 checksums of the source and the
 result, the status, the error code and message when it failed, the duration, and whether the

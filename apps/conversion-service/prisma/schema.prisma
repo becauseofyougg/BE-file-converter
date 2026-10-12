@@ -67,7 +67,13 @@ model ConversionOperation {
 
   /// The user asked to keep the result.
   saved           Boolean   @default(false)
-  /// When an unsaved result is deleted. Null for saved ones.
+  /// The kept file's identifier, as the history and the audit name it — set
+  /// only when a result was actually saved. Opaque: not the storage key,
+  /// which never leaves this service.
+  fileId          String?   @map("file_id") @db.Uuid
+  /// When the result is deleted: minutes after the response for an unsaved
+  /// one, `HISTORY_RETENTION_DAYS` for a saved one. Null on rows saved before
+  /// saved files expired — those go with their row at retention.
   resultExpiresAt DateTime? @map("result_expires_at") @db.Timestamptz(6)
 
   errorCode    String? @map("error_code") @db.VarChar(64)

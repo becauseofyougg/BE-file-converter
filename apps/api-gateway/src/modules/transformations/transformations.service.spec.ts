@@ -1,4 +1,5 @@
 import type { ClientProxy } from '@nestjs/microservices';
+import { Readable } from 'node:stream';
 import { of, throwError } from 'rxjs';
 
 import { AppError } from '@core/errors/app-error';
@@ -6,6 +7,7 @@ import { CONVERSION_RPC_PATTERNS } from '@contracts/messages/conversion.messages
 import type { RbacConfig } from '@contracts/messages/rbac.messages';
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { USERS_PATTERNS } from '@contracts/messages/users.messages';
+import type { StorageResolver } from '@storage/storage-resolver';
 import type { RequestUser } from '../auth/request-user';
 import type { RbacConfigCache } from '../rbac/rbac-config.cache';
 import { TransformationsService } from './transformations.service';
@@ -51,9 +53,13 @@ describe('TransformationsService', () => {
   let conversionSend: jest.Mock;
   let identitySend: jest.Mock;
   let service: TransformationsService;
+  let getStream: jest.Mock;
 
   beforeEach(() => {
     conversionSend = jest.fn().mockReturnValue(of(PAGE));
+    getStream = jest
+      .fn()
+      .mockResolvedValue(Readable.from([Buffer.from('data')]));
     identitySend = jest
       .fn()
       .mockReturnValue(of({ userId: TARGET, active: true }));
@@ -62,10 +68,12 @@ describe('TransformationsService', () => {
       { send: conversionSend } as unknown as ClientProxy,
       { send: identitySend } as unknown as ClientProxy,
       { current: () => CONFIG } as unknown as RbacConfigCache,
+      { forDriver: () => ({ getStream }) } as unknown as StorageResolver,
     );
 
     jest.spyOn(service['logger'], 'log').mockImplementation(() => undefined);
     jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+    jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
   });
 
   const auditEntry = (level: 'log' | 'warn') =>
@@ -242,5 +250,171 @@ describe('TransformationsService', () => {
       service.history(user(['USER'], TARGET), { kind: 'self' }, {}, 'c'),
     ).rejects.toThrow('broker gone');
     expect(auditEntry('warn')).toMatchObject({ status: 500 });
+  });
+
+  it("reads one of the caller's own operations, for the caller's id only", async () => {
+    conversionSend.mockReturnValue(of({ id: 'op-1' }));
+
+    await service.operation(user(['USER'], TARGET), 'op-1', 'c');
+
+    expect(conversionSend).toHaveBeenCalledWith(
+      CONVERSION_RPC_PATTERNS.HISTORY_GET,
+      { userId: TARGET, operationId: 'op-1', correlationId: 'c' },
+    );
+  });
+
+  describe('download', () => {
+    const FILE = {
+      bucket: 'results',
+      key: `${TARGET}/op-1.json`,
+      driver: 'local',
+      contentType: 'application/json; charset=utf-8',
+      fileName: 'people.json',
+      size: 4,
+      fileId: 'file-1',
+    };
+
+    beforeEach(() => {
+      conversionSend.mockReturnValue(of(FILE));
+    });
+
+    /** Read to the end, as a client does; the audit line is written on close. */
+    const drain = async (stream: Readable) => {
+      for await (const chunk of stream) {
+        void chunk;
+      }
+
+      await new Promise(setImmediate);
+    };
+
+    it('streams a saved result of ones own, and audits the transfer', async () => {
+      const result = await service.download(
+        user(['USER'], TARGET),
+        { kind: 'self' },
+        'op-1',
+        'c',
+      );
+
+      expect(conversionSend).toHaveBeenCalledWith(
+        CONVERSION_RPC_PATTERNS.HISTORY_RESULT,
+        { userId: TARGET, operationId: 'op-1', correlationId: 'c' },
+      );
+      expect(result).toMatchObject({ file: FILE, operationId: 'op-1' });
+
+      await drain(result.stream);
+
+      expect(auditEntry('log')).toEqual({
+        event: 'transformations.file.download',
+        actorUserId: TARGET,
+        scope: 'self',
+        transformationId: 'op-1',
+        fileId: 'file-1',
+        fileSize: 4,
+        status: 200,
+        result: 'success',
+        durationMs: expect.any(Number) as number,
+      });
+    });
+
+    it("streams another user's to a holder of transformations@read", async () => {
+      const result = await service.download(
+        user(['ADMIN']),
+        { kind: 'admin', targetUserId: TARGET },
+        'op-1',
+        'c',
+      );
+
+      expect(conversionSend).toHaveBeenCalledWith(
+        CONVERSION_RPC_PATTERNS.HISTORY_RESULT,
+        { userId: TARGET, operationId: 'op-1', correlationId: 'c' },
+      );
+
+      await drain(result.stream);
+
+      expect(auditEntry('log')).toMatchObject({
+        actorUserId: ADMIN_ID,
+        targetUserId: TARGET,
+        scope: 'admin',
+      });
+    });
+
+    it('refuses anyone else with 403, before any lookup, and audits it', async () => {
+      const error = await refusal(
+        service.download(
+          user(['USER']),
+          { kind: 'admin', targetUserId: TARGET },
+          'op-1',
+          'c',
+        ),
+      );
+
+      expect(error.httpStatus).toBe(403);
+      expect(identitySend).not.toHaveBeenCalled();
+      expect(conversionSend).not.toHaveBeenCalled();
+      expect(auditEntry('warn')).toMatchObject({
+        event: 'transformations.file.download',
+        status: 403,
+        result: 'failure',
+        fileId: null,
+      });
+    });
+
+    it("passes on the service's refusal — expired, not saved — and audits it", async () => {
+      conversionSend.mockReturnValue(
+        throwError(() => ({
+          error: {
+            code: ERROR_CODES.RESULT_EXPIRED,
+            message: 'This saved result has expired and been deleted',
+            httpStatus: 410,
+          },
+        })),
+      );
+
+      const error = await refusal(
+        service.download(user(['USER'], TARGET), { kind: 'self' }, 'op-1', 'c'),
+      );
+
+      expect(error).toMatchObject({
+        code: ERROR_CODES.RESULT_EXPIRED,
+        httpStatus: 410,
+      });
+      expect(auditEntry('warn')).toMatchObject({ status: 410 });
+    });
+
+    it('records a transfer the client abandoned as not completed', async () => {
+      const result = await service.download(
+        user(['USER'], TARGET),
+        { kind: 'self' },
+        'op-1',
+        'c',
+      );
+
+      result.stream.destroy();
+      await new Promise(setImmediate);
+
+      expect(auditEntry('warn')).toMatchObject({
+        status: 499,
+        result: 'failure',
+      });
+    });
+
+    it('audits an unexpected failure as a 500', async () => {
+      getStream.mockRejectedValue('odd');
+
+      await expect(
+        service.download(user(['USER'], TARGET), { kind: 'self' }, 'op-1', 'c'),
+      ).rejects.toMatchObject({ httpStatus: 503 });
+      expect(auditEntry('warn')).toMatchObject({ status: 503 });
+
+      (service['logger'].warn as jest.Mock).mockClear();
+      conversionSend.mockReturnValue(
+        throwError(() => new Error('broker gone')),
+      );
+
+      await expect(
+        service.download(user(['USER'], TARGET), { kind: 'self' }, 'op-1', 'c'),
+      ).rejects.toThrow('broker gone');
+      expect(auditEntry('warn')).toMatchObject({ status: 500 });
+    });
   });
 });

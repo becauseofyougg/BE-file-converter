@@ -2,7 +2,6 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { ClientProxy } from '@nestjs/microservices';
 import type { FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import type { Readable } from 'node:stream';
 
 import { ConfigService } from '@core/config/config.service';
 import { AppError } from '@core/errors/app-error';
@@ -11,8 +10,6 @@ import {
   CONVERSION_RPC_PATTERNS,
   type ConversionFormatEntry,
   type ConversionFormatsRequest,
-  type ConversionOperationRecord,
-  type ConversionOperationRequest,
   type ConversionResultFile,
   type ConvertFileRequest,
   type ConvertFileResponse,
@@ -23,17 +20,11 @@ import type { GatewayConfig } from '../../config/gateway.config';
 import { CONVERSION_CLIENT } from '../../messaging/messaging.module';
 import { sendRpc } from '../../messaging/rpc';
 import { type ConvertRoute, parseFields } from './convert-fields';
+import { type DownloadableResult, openResult } from './result-stream';
 import { readUpload } from './upload-reader';
 
 /** `GET …/formats` changes only with a deploy; asking once a minute is plenty. */
 const FORMATS_TTL_MS = 60_000;
-
-/** A converted file, ready to stream to the client. */
-export interface DownloadableResult {
-  file: ConversionResultFile;
-  stream: Readable;
-  operationId: string;
-}
 
 /**
  * The gateway's half of `/api/convert`: take the upload, ask
@@ -108,7 +99,11 @@ export class ConversionsService {
         this.config.getNumber('CONVERSION_RPC_TIMEOUT_MS'),
       );
 
-      const stream = await this.open(response.result);
+      const stream = await openResult(
+        this.resolver,
+        response.result,
+        this.logger,
+      );
 
       if (!save) {
         // Nobody asked to keep it: gone once it has been sent, rather than
@@ -116,7 +111,12 @@ export class ConversionsService {
         stream.once('close', () => void this.discard(response.result));
       }
 
-      return { file: response.result, stream, operationId };
+      return {
+        file: response.result,
+        stream,
+        operationId,
+        saved: response.operation.saved,
+      };
     } finally {
       // conversion-service deletes the upload when it is done with it; this
       // covers the cases where it never got it — a refused field, a timeout.
@@ -145,59 +145,6 @@ export class ConversionsService {
     this.formatsCache.set(family ?? '', { entries, at: Date.now() });
 
     return entries;
-  }
-
-  operation(
-    request: ConversionOperationRequest,
-  ): Promise<ConversionOperationRecord> {
-    return sendRpc(
-      this.conversion,
-      CONVERSION_RPC_PATTERNS.HISTORY_GET,
-      request,
-    );
-  }
-
-  async download(
-    request: ConversionOperationRequest,
-  ): Promise<DownloadableResult> {
-    const file = await sendRpc<
-      ConversionResultFile,
-      ConversionOperationRequest
-    >(this.conversion, CONVERSION_RPC_PATTERNS.HISTORY_RESULT, request);
-
-    return {
-      file,
-      stream: await this.open(file),
-      operationId: request.operationId,
-    };
-  }
-
-  /**
-   * Opened before a single byte of the response is written, so a result
-   * that cannot be read is an error response — never a 200 that stops
-   * half-way.
-   */
-  private async open(file: ConversionResultFile): Promise<Readable> {
-    try {
-      return await this.resolver
-        .forDriver(file.driver)
-        .getStream(file.bucket, file.key);
-    } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-
-      this.logger.error({
-        event: 'conversion.result_unreadable',
-        error: (error as Error).message,
-      });
-
-      throw new AppError(
-        ERROR_CODES.STORAGE_UNAVAILABLE,
-        'The result could not be read',
-        503,
-      );
-    }
   }
 
   private async discard(file: ConversionResultFile): Promise<void> {

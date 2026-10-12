@@ -5,7 +5,7 @@ import type { TransformationHistoryRequest } from '@contracts/messages/conversio
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { PrismaService } from '../../database/prisma.service';
 import type { ConverterRegistry } from '../converters/converter-registry';
-import { encodeCursor } from './operation-record';
+import { encodeCursor, HISTORY_ITEM_SELECT } from './operation-record';
 import { TransformationHistoryService } from './transformation-history.service';
 
 const USER = '0b6c3c6e-55d4-4f5e-8f2a-6a4c1d2e3f40';
@@ -33,6 +33,7 @@ const row = (
     resultKey: null,
     storageDriver: 'local',
     options: null,
+    fileId: null,
     saved: false,
     resultExpiresAt: null,
     errorCode: null,
@@ -113,7 +114,7 @@ describe('TransformationHistoryService', () => {
           status: 'success',
           fileSize: 1234,
           durationMs: 41,
-          resultAvailable: false,
+          fileId: null,
           createdAt: '2026-10-02T11:00:00.000Z',
         },
         {
@@ -125,7 +126,7 @@ describe('TransformationHistoryService', () => {
           fileSize: 1234,
           durationMs: 0,
           errorCode: 'UNSUPPORTED_FORMAT',
-          resultAvailable: false,
+          fileId: null,
           createdAt: '2026-10-02T10:00:00.000Z',
         },
       ],
@@ -134,12 +135,36 @@ describe('TransformationHistoryService', () => {
     expect(JSON.stringify(page)).not.toMatch(/payroll|aaaa|bbbb/);
   });
 
-  it('says when a saved result can be downloaded', async () => {
+  it('names a saved file while it can be downloaded, and only then', async () => {
+    const FILE = '11111111-1111-4111-8111-111111111111';
+    const later = new Date(Date.now() + 60_000);
+    const earlier = new Date(Date.now() - 60_000);
+
     findMany.mockResolvedValue([
-      row(A, '2026-10-02T10:00:00Z', { saved: true, resultKey: 'u/a.json' }),
+      row(A, '2026-10-02T10:00:00Z', {
+        saved: true,
+        fileId: FILE,
+        resultKey: 'u/a.json',
+        resultExpiresAt: later,
+      }),
+      row(B, '2026-10-02T09:00:00Z', {
+        saved: true,
+        fileId: FILE,
+        resultKey: 'u/b.json',
+        resultExpiresAt: earlier,
+      }),
+      row(C, '2026-10-02T08:00:00Z', {
+        saved: true,
+        fileId: FILE,
+        resultKey: null,
+      }),
     ]);
 
-    expect((await list()).items[0].resultAvailable).toBe(true);
+    expect((await list()).items.map((item) => item.fileId)).toEqual([
+      FILE,
+      null,
+      null,
+    ]);
   });
 
   it("asks only for the user's finished operations, newest first", async () => {
@@ -149,7 +174,29 @@ describe('TransformationHistoryService', () => {
       where: { userId: USER, status: { in: ['COMPLETED', 'FAILED'] } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 21,
+      select: HISTORY_ITEM_SELECT,
     });
+  });
+
+  /** A page is up to a hundred rows: none of what an item leaves out is read. */
+  it('reads only the columns an item is built from', async () => {
+    await list();
+
+    const columns = Object.keys(
+      findMany.mock.calls[0][0].select as Record<string, true>,
+    );
+
+    for (const left of [
+      'sourceName',
+      'sourceChecksum',
+      'resultChecksum',
+      'options',
+      'storageDriver',
+      'errorMessage',
+      'correlationId',
+    ]) {
+      expect(columns).not.toContain(left);
+    }
   });
 
   it('pages with a cursor at the last item', async () => {
