@@ -44,7 +44,9 @@ from which fields happen to be present.
 
 **The password DTO has no minimum length**, unlike registration's. The policy may have been tightened
 since an account was created, and rejecting a short password at the edge would tell an attacker that
-anything shorter is not worth trying. Login checks the hash and nothing else.
+anything shorter is not worth trying. Login checks the hash and nothing else. An **empty** password is
+refused with `400 VALIDATION_FAILED`, though: it is a missing field rather than a short password, it
+reveals nothing about the policy, and let through it would count towards the lockout as a wrong guess.
 
 ---
 
@@ -83,8 +85,12 @@ belongs to, so it expires with the attempt.
 weaker challenge, with a 24-hour link — would complete a login. A challenge is only valid for the
 thing it was issued for.
 
-`POST /auth/confirm` takes `{ challengeId, code }` or `{ token }`; the magic link points at it.
-`POST /auth/resend-login-confirmation` takes `{ challengeId }` and always answers `202`.
+`POST /auth/confirm` takes `{ challengeId, code }` or `{ token }`. The magic link does not point at it
+directly: the mail links to the frontend page `<APP_PUBLIC_URL>/login/confirm?token=…`, which posts the
+token here. A link that hit the API itself would be confirmed by any mail scanner that prefetches
+links — completing the login for whoever started it.
+`POST /auth/resend-login-confirmation` takes `{ challengeId }` and answers `202` whether or not the
+challenge is live, except inside the resend limits, which are `429 RESEND_TOO_SOON`.
 
 The session belongs to **whoever completes the challenge**, and records that device: a link opened on
 a phone signs the phone in. The mail carries the requesting user agent and IP so the owner can
@@ -119,10 +125,11 @@ cannot be cashed in after one.
 | Event | Level | Notes |
 |---|---|---|
 | `auth.login.success` | info | with the roles the token was signed with |
-| `auth.login.failed` | warn | reason: `unknown_account` / `bad_password` / `email_not_verified` — never the password |
+| `auth.login.failed` | warn | reason: `unknown_account` / `account_deleted` / `bad_password` / `email_not_verified` — never the password |
 | `auth.login.lockout_applied` | warn | |
 | `auth.login.locked` | warn | a refused attempt against a locked account |
 | `auth.login.confirmation_required` / `.confirmation_resent` / `.confirmed` | info | method only, never the code |
+| `auth.verification.failed` | warn | `type: login_confirmation`; reason: `invalid` / `expired` / `attempts_exceeded` / `used` / `lost_race` / `unknown_challenge` / `wrong_type` / `account_removed` |
 
 ---
 
@@ -143,8 +150,8 @@ cannot be cashed in after one.
 
 ## 8. Still open
 
-1. Mail templates belong to `notification-service`, which does not consume
-   `user.login_confirmation_requested` yet. Identity publishes it; nothing renders it.
+1. The confirmation link is `/login/confirm` on the frontend rather than the `/auth/confirm` the
+   requirement names (§4) — a deliberate difference, to confirm with the mentor.
 2. The lockout is per account and stored on the row. Under a distributed attack the write contention
    is on one row per targeted account, which is fine; if login volume ever makes that hot, the counter
    belongs in Redis alongside the throttler.

@@ -1,5 +1,6 @@
 import {
   IsEmail,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -17,6 +18,10 @@ import { OTP_LENGTH } from '../verification.service';
  * The policy may have been tightened since this account was created, and
  * rejecting a short password at the DTO would tell an attacker that anything
  * shorter is not worth trying. Login checks the hash and nothing else.
+ *
+ * Empty is different: it is a missing field, not a short password, and no
+ * account has one. Let through, it would cost a hash and count towards the
+ * lockout as a wrong guess.
  */
 export class LoginMessageDto implements LoginRequest {
   @IsEmail()
@@ -24,6 +29,7 @@ export class LoginMessageDto implements LoginRequest {
   email: string;
 
   @IsString()
+  @IsNotEmpty()
   @MaxLength(PASSWORD_MAX_LENGTH)
   password: string;
 

@@ -6,6 +6,7 @@ import type { Role } from '@prisma-clients/identity';
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { RoleDto } from '@contracts/messages/rbac.messages';
 import { AppError } from '@core/errors/app-error';
+import { orConflict } from '../../database/prisma-errors';
 import { PrismaService } from '../../database/prisma.service';
 import { RbacConfigService } from './rbac-config.service';
 
@@ -41,13 +42,16 @@ export class RolesService {
   async create(input: RoleWriteInput & { name: string }): Promise<RoleDto> {
     await this.assertNameFree(input.name);
 
-    const role = await this.db.role.create({
-      data: {
-        name: input.name,
-        description: input.description ?? null,
-        isSystem: false,
-      },
-    });
+    const role = await orConflict(
+      this.db.role.create({
+        data: {
+          name: input.name,
+          description: input.description ?? null,
+          isSystem: false,
+        },
+      }),
+      roleNameTaken,
+    );
 
     await this.config.invalidate({
       entity: 'role',
@@ -80,16 +84,19 @@ export class RolesService {
       await this.assertNameFree(input.name);
     }
 
-    const role = await this.db.role.update({
-      where: { id },
-      data: {
-        name: input.name ?? existing.name,
-        description:
-          input.description === undefined
-            ? existing.description
-            : input.description,
-      },
-    });
+    const role = await orConflict(
+      this.db.role.update({
+        where: { id },
+        data: {
+          name: input.name ?? existing.name,
+          description:
+            input.description === undefined
+              ? existing.description
+              : input.description,
+        },
+      }),
+      roleNameTaken,
+    );
 
     await this.config.invalidate({
       entity: 'role',
@@ -166,11 +173,7 @@ export class RolesService {
     const clash = await this.db.role.findUnique({ where: { name } });
 
     if (clash) {
-      throw new AppError(
-        ERROR_CODES.ROLE_ALREADY_EXISTS,
-        'A role with this name already exists',
-        409,
-      );
+      throw roleNameTaken();
     }
   }
 
@@ -186,6 +189,14 @@ export class RolesService {
       roleName: role.name,
     });
   }
+}
+
+function roleNameTaken(): AppError {
+  return new AppError(
+    ERROR_CODES.ROLE_ALREADY_EXISTS,
+    'A role with this name already exists',
+    409,
+  );
 }
 
 function toDto(role: Role): RoleDto {

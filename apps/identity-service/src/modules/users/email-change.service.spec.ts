@@ -10,6 +10,8 @@ jest.mock('@nestjs-cls/transactional', () => ({
   TransactionHost: class {},
 }));
 
+import { Prisma } from '@prisma-clients/identity';
+
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { DOMAIN_EVENTS } from '@contracts/events/domain.events';
 import { VERIFICATION_TOKEN_TYPES } from '@contracts/messages/identity.messages';
@@ -65,6 +67,7 @@ describe('EmailChangeService', () => {
   let verification: jest.Mocked<VerificationService>;
   let outbox: jest.Mocked<OutboxService>;
   let service: EmailChangeService;
+  let warn: jest.SpyInstance;
 
   const challenge = {
     challengeId: 'challenge-1',
@@ -84,6 +87,8 @@ describe('EmailChangeService', () => {
 
     verification = {
       issue: jest.fn().mockResolvedValue(challenge),
+      rotate: jest.fn().mockResolvedValue(challenge),
+      findLiveByUser: jest.fn().mockResolvedValue(null),
       consume: jest.fn().mockResolvedValue(undefined),
       findLiveByChallengeId: jest.fn().mockResolvedValue(buildToken()),
       findLiveByRawToken: jest.fn().mockResolvedValue(buildToken()),
@@ -94,6 +99,9 @@ describe('EmailChangeService', () => {
     } as unknown as jest.Mocked<OutboxService>;
 
     service = new EmailChangeService(users, verification, outbox);
+    warn = jest
+      .spyOn(service['logger'], 'warn')
+      .mockImplementation(() => undefined);
   });
 
   const start = (newEmail = 'new@example.com', targetUserId = VIEWER) =>
@@ -162,6 +170,74 @@ describe('EmailChangeService', () => {
       expect(users.isEmailTaken).toHaveBeenCalledWith(
         'new@example.com',
         VIEWER,
+      );
+    });
+
+    /**
+     * An erased account keeps a live access token for up to fifteen minutes;
+     * let through, it would write a real address back onto the anonymised row.
+     */
+    it('refuses an erased account, and issues nothing', async () => {
+      users.findById.mockResolvedValue(buildUser({ deletedAt: new Date() }));
+
+      await expect(start()).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.USER_NOT_FOUND }),
+      );
+      expect(verification.issue).not.toHaveBeenCalled();
+      expect(outbox.publish).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Starting over must not be a way around the resend limits: a fresh
+     * challenge per call reset them, and every call mailed a new code.
+     */
+    it('rotates a pending challenge onto the new address instead of opening another', async () => {
+      const live = buildToken({ newEmail: 'first@example.com' });
+      verification.findLiveByUser.mockResolvedValue(live);
+
+      await start('second@example.com');
+
+      expect(verification.rotate).toHaveBeenCalledWith(
+        live,
+        'second@example.com',
+      );
+      expect(verification.issue).not.toHaveBeenCalled();
+    });
+
+    it('refuses to start over inside the resend interval, and logs it', async () => {
+      verification.findLiveByUser.mockResolvedValue(buildToken());
+      verification.rotate.mockRejectedValue(
+        new AppError(ERROR_CODES.RESEND_TOO_SOON, 'too soon', 429),
+      );
+
+      await expect(start()).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.RESEND_TOO_SOON }),
+      );
+      expect(outbox.publish).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'users.email_change.requested',
+          outcome: 'resend_too_soon',
+        }),
+      );
+    });
+
+    it.each([
+      [
+        'email_in_use',
+        () => users.isEmailTaken.mockResolvedValue(true),
+        'new@example.com',
+      ],
+      ['same_address', () => undefined, 'old@example.com'],
+    ] as const)('logs a %s refusal', async (outcome, arrange, address) => {
+      arrange();
+
+      await expect(start(address)).rejects.toThrow(AppError);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'users.email_change.requested',
+          outcome,
+        }),
       );
     });
   });
@@ -255,6 +331,61 @@ describe('EmailChangeService', () => {
     it('needs a code or a token, not just a handle', async () => {
       await expect(confirm({ challengeId: 'challenge-1' })).rejects.toThrow(
         expect.objectContaining({ code: ERROR_CODES.VALIDATION_FAILED }),
+      );
+    });
+
+    it('refuses to move an account erased since the challenge was issued', async () => {
+      users.findById.mockResolvedValue(buildUser({ deletedAt: new Date() }));
+
+      await expect(confirm()).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.CONFIRMATION_INVALID }),
+      );
+      expect(users.changeEmail).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'users.email_change.failed',
+          reason: 'account_removed',
+        }),
+      );
+    });
+
+    /** Two claims racing past the pre-check; the unique index catches one. */
+    it('answers 409, not 500, when another account took the address meanwhile', async () => {
+      users.changeEmail.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(confirm()).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.EMAIL_IN_USE }),
+      );
+      expect(outbox.publish).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['unknown_challenge', null],
+      [
+        'wrong_owner',
+        buildToken({ userId: OTHER } as Partial<VerificationToken>),
+      ],
+      [
+        'wrong_type',
+        buildToken({
+          type: VERIFICATION_TOKEN_TYPES.EMAIL_VERIFICATION,
+        } as Partial<VerificationToken>),
+      ],
+    ])('logs a %s refusal', async (reason, found) => {
+      verification.findLiveByChallengeId.mockResolvedValue(found);
+
+      await expect(confirm()).rejects.toThrow(AppError);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'auth.verification.failed',
+          type: VERIFICATION_TOKEN_TYPES.EMAIL_CHANGE,
+          reason,
+        }),
       );
     });
   });

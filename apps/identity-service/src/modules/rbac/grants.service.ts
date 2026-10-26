@@ -5,6 +5,7 @@ import { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-pr
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { GrantDto } from '@contracts/messages/rbac.messages';
 import { AppError } from '@core/errors/app-error';
+import { orConflict } from '../../database/prisma-errors';
 import { PrismaService } from '../../database/prisma.service';
 import { PermissionsService } from './permissions.service';
 import { RbacConfigService } from './rbac-config.service';
@@ -69,21 +70,20 @@ export class GrantsService {
     });
 
     if (duplicate) {
-      throw new AppError(
-        ERROR_CODES.GRANT_ALREADY_EXISTS,
-        'This role already has a grant for this permission; update it instead',
-        409,
-      );
+      throw grantPairTaken();
     }
 
-    const grant = await this.db.grant.create({
-      data: {
-        roleId: input.roleId,
-        permissionId: input.permissionId,
-        actions,
-      },
-      include: WITH_NAMES,
-    });
+    const grant = await orConflict(
+      this.db.grant.create({
+        data: {
+          roleId: input.roleId,
+          permissionId: input.permissionId,
+          actions,
+        },
+        include: WITH_NAMES,
+      }),
+      grantPairTaken,
+    );
 
     await this.config.invalidate({
       entity: 'grant',
@@ -125,19 +125,18 @@ export class GrantsService {
       });
 
       if (clash && clash.id !== id) {
-        throw new AppError(
-          ERROR_CODES.GRANT_ALREADY_EXISTS,
-          'Another grant already pairs this role with this permission',
-          409,
-        );
+        throw grantPairTaken();
       }
     }
 
-    const grant = await this.db.grant.update({
-      where: { id },
-      data: { roleId, permissionId, actions },
-      include: WITH_NAMES,
-    });
+    const grant = await orConflict(
+      this.db.grant.update({
+        where: { id },
+        data: { roleId, permissionId, actions },
+        include: WITH_NAMES,
+      }),
+      grantPairTaken,
+    );
 
     await this.config.invalidate({
       entity: 'grant',
@@ -236,6 +235,15 @@ export class GrantsService {
       ...extra,
     });
   }
+}
+
+/** One (role, permission) pair, one grant — the unique index's rule. */
+function grantPairTaken(): AppError {
+  return new AppError(
+    ERROR_CODES.GRANT_ALREADY_EXISTS,
+    'This role already has a grant for this permission; update it instead',
+    409,
+  );
 }
 
 interface GrantWithNames {

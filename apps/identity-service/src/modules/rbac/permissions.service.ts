@@ -6,6 +6,7 @@ import type { Permission } from '@prisma-clients/identity';
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import type { PermissionDto } from '@contracts/messages/rbac.messages';
 import { AppError } from '@core/errors/app-error';
+import { orConflict } from '../../database/prisma-errors';
 import { PrismaService } from '../../database/prisma.service';
 import { RbacConfigService } from './rbac-config.service';
 
@@ -45,9 +46,12 @@ export class PermissionsService {
   ): Promise<PermissionDto> {
     await this.assertNameFree(input.name);
 
-    const permission = await this.db.permission.create({
-      data: { name: input.name, actions: normalizeActions(input.actions) },
-    });
+    const permission = await orConflict(
+      this.db.permission.create({
+        data: { name: input.name, actions: normalizeActions(input.actions) },
+      }),
+      permissionNameTaken,
+    );
 
     await this.config.invalidate({
       entity: 'permission',
@@ -83,10 +87,13 @@ export class PermissionsService {
         ? existing.actions
         : normalizeActions(input.actions);
 
-    const permission = await this.db.permission.update({
-      where: { id },
-      data: { name: input.name ?? existing.name, actions },
-    });
+    const permission = await orConflict(
+      this.db.permission.update({
+        where: { id },
+        data: { name: input.name ?? existing.name, actions },
+      }),
+      permissionNameTaken,
+    );
 
     const removed = existing.actions.filter(
       (action) => !actions.includes(action),
@@ -213,13 +220,17 @@ export class PermissionsService {
     const clash = await this.db.permission.findUnique({ where: { name } });
 
     if (clash) {
-      throw new AppError(
-        ERROR_CODES.PERMISSION_ALREADY_EXISTS,
-        'A permission with this name already exists',
-        409,
-      );
+      throw permissionNameTaken();
     }
   }
+}
+
+function permissionNameTaken(): AppError {
+  return new AppError(
+    ERROR_CODES.PERMISSION_ALREADY_EXISTS,
+    'A permission with this name already exists',
+    409,
+  );
 }
 
 /** Deduplicated and sorted, so the config hash does not move on a reorder. */

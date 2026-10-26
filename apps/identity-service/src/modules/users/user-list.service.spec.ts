@@ -10,6 +10,7 @@ import { UserListService, statusOf } from './user-list.service';
 import { UsersService, type User } from './users.service';
 
 const ADMIN = '11111111-1111-4111-8111-111111111111';
+const CURSOR_ID = '33333333-3333-4333-8333-333333333333';
 
 function buildUser(overrides: Partial<User> = {}): User {
   return {
@@ -37,6 +38,7 @@ describe('UserListService', () => {
   beforeEach(() => {
     users = {
       findManyForList: jest.fn().mockResolvedValue([buildUser()]),
+      findById: jest.fn().mockResolvedValue(buildUser({ id: CURSOR_ID })),
     } as unknown as jest.Mocked<UsersService>;
 
     rbac = {
@@ -100,14 +102,82 @@ describe('UserListService', () => {
 
     it('resumes past the cursor row, which the caller already has', async () => {
       const cursor = encodeCursor({
-        id: 'abc',
+        id: CURSOR_ID,
         sort: 'created_at',
         order: 'desc',
       });
 
       await list({ cursor });
 
-      expect(lastQuery()?.cursorId).toBe('abc');
+      expect(lastQuery()?.cursorId).toBe(CURSOR_ID);
+    });
+
+    /**
+     * The id goes straight into a query against a `uuid` column, where
+     * anything else is a driver error — which reached the client as a 500.
+     */
+    it('refuses a well-formed cursor whose id is not a uuid, before querying', async () => {
+      const cursor = encodeCursor({
+        id: 'not-a-uuid',
+        sort: 'created_at',
+        order: 'desc',
+      });
+
+      await expect(list({ cursor })).rejects.toThrow(
+        expect.objectContaining({
+          code: ERROR_CODES.VALIDATION_FAILED,
+          httpStatus: 400,
+        }),
+      );
+      expect(users.findManyForList).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Resuming from a row that is gone returns nothing at all, which would go
+     * out as an empty last page — the walk ending early with no sign of it.
+     */
+    it('refuses a cursor whose account no longer exists', async () => {
+      users.findManyForList.mockResolvedValue([]);
+      users.findById.mockResolvedValue(null);
+      const cursor = encodeCursor({
+        id: CURSOR_ID,
+        sort: 'created_at',
+        order: 'desc',
+      });
+
+      await expect(list({ cursor })).rejects.toThrow(
+        expect.objectContaining({
+          code: ERROR_CODES.VALIDATION_FAILED,
+          details: { reason: 'stale' },
+        }),
+      );
+    });
+
+    it('treats an empty page after a live cursor as the real end', async () => {
+      users.findManyForList.mockResolvedValue([]);
+      const cursor = encodeCursor({
+        id: CURSOR_ID,
+        sort: 'created_at',
+        order: 'desc',
+      });
+
+      await expect(list({ cursor })).resolves.toEqual({
+        items: [],
+        nextCursor: null,
+      });
+    });
+
+    /** Only an empty page can be the stale case, so only it pays the lookup. */
+    it('does not look the cursor up when the page has rows', async () => {
+      const cursor = encodeCursor({
+        id: CURSOR_ID,
+        sort: 'created_at',
+        order: 'desc',
+      });
+
+      await list({ cursor });
+
+      expect(users.findById).not.toHaveBeenCalled();
     });
 
     /**
@@ -117,14 +187,37 @@ describe('UserListService', () => {
      */
     it('refuses a cursor from a different sort', async () => {
       const cursor = encodeCursor({
-        id: 'abc',
+        id: CURSOR_ID,
         sort: 'email',
         order: 'asc',
       });
 
       await expect(list({ cursor, sort: 'created_at' })).rejects.toThrow(
-        expect.objectContaining({ code: ERROR_CODES.VALIDATION_FAILED }),
+        expect.objectContaining({
+          code: ERROR_CODES.VALIDATION_FAILED,
+          details: { reason: 'sort_mismatch' },
+        }),
       );
+    });
+
+    /** §1.5: a refused request is a result too — and still never `q`. */
+    it('logs a refused cursor with its reason, never the search term', async () => {
+      const warn = jest
+        .spyOn(service['logger'], 'warn')
+        .mockImplementation(() => undefined);
+
+      await expect(
+        list({ cursor: 'not-base64-json', q: 'ada@example.com' }),
+      ).rejects.toThrow(AppError);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'users.list.rejected',
+          actorUserId: ADMIN,
+          reason: 'invalid',
+          searched: true,
+        }),
+      );
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('ada@example.com');
     });
 
     it('refuses a cursor that is not one of ours', async () => {

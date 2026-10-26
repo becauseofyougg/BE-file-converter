@@ -244,11 +244,14 @@ export class AuthController {
     };
   }
 
-  /** Always `202`, whatever became of the challenge. */
+  /**
+   * `202` whatever became of the challenge, except inside the resend limits,
+   * which identity-service enforces and answers with a `429`.
+   */
   @ApiOperation({
     summary: 'Send another login confirmation',
     description:
-      'Always `202`, whatever became of the challenge — the resend interval is enforced by identity-service.',
+      '`202` whether or not the challenge is still live. A live one resent within 60 s of the last mail, or more than 5 times in an hour, is `429 RESEND_TOO_SOON` with `retryAfterSeconds`.',
   })
   @ApiResponse({ status: 202, type: AcceptedDto })
   @Post('resend-login-confirmation')
@@ -310,15 +313,15 @@ export class AuthController {
   }
 
   /**
-   * Always `202`, whatever the state of the account — see
-   * docs/REGISTRATION.md §5.4. The per-account interval is enforced by
+   * `202` whatever the state of the account — see docs/REGISTRATION.md §5.4 —
+   * except inside the resend limits. The per-account interval is enforced by
    * identity-service, which is the only side that knows when the last mail
    * actually went out.
    */
   @ApiOperation({
     summary: 'Send another verification email',
     description:
-      'Always `202`, whether the account exists, is already verified, or never existed.',
+      '`202` whether the account exists, is already verified, or never existed. Quoting a `challengeId` within 60 s of the last mail, or more than 5 times in an hour, is `429 RESEND_TOO_SOON` with `retryAfterSeconds`; by `email` it stays `202` and sends nothing, since a 429 there would reveal the account.',
   })
   @ApiResponse({ status: 202, type: AcceptedDto })
   @Post('resend-verification')

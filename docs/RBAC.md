@@ -122,6 +122,12 @@ rules independently report the same string, and "are these gateways agreeing?" i
 A failed reload keeps the previous config. Stale rules are better than none, because none denies
 everyone.
 
+**A failed load is retried, not left for the next event.** A gateway that boots before identity
+answers holds the empty config, which denies `rbac@manage` as well — so the admin change that would
+publish `rbac.updated` is itself refused, and waiting for the event would mean waiting for a restart.
+Any failed fetch, at boot or on an event, schedules a retry: 1 s, doubling, capped at 30 s, until one
+succeeds. A success by any trigger cancels the pending retry and resets the backoff.
+
 ---
 
 ## 6. Admin API
@@ -160,6 +166,11 @@ message is not a credential.
 from everyone holding the role, and the one thing an access-control change must never be is silent.
 The `user_roles` foreign key is `RESTRICT`, so the database refuses even if the check is bypassed;
 grants cascade with their role, because a grant has no meaning without one.
+
+**A duplicate is a 409 even when two requests race.** Each write checks for a clash first, but two
+concurrent requests both pass that check; the unique index on `roles.name`, `permissions.name` and
+`grants (role_id, permission_id)` catches the second, and its violation is translated into the same
+`*_ALREADY_EXISTS` rather than surfacing as a 500.
 
 **Narrowing a permission's actions prunes the grants that named them.** A grant left naming only
 removed actions would become "all actions" if it were merely emptied — the opposite of what its author
@@ -226,8 +237,10 @@ config version:
 |---|---|
 | `rbac.role.*`, `rbac.permission.*`, `rbac.grant.*` (create/update/delete) | info |
 | `rbac.user_roles.replaced`, with the before and after sets | info |
+| `rbac.<entity>.<operation>.rejected` — a refused write, with `actorUserId`, `targetId`, `code` and `status` (400/404/409) | warn |
 | `rbac.config.invalidated` / `.loaded` / `.reloaded` | info |
 | `rbac.config.reload_failed`, with the version kept | error |
+| `rbac.config.retry_scheduled`, with the attempt and the delay | warn |
 | `rbac.access.denied`, with roles, requirement and reason | warn |
 | `rbac.permission.malformed` — a route declaring nonsense | error |
 | `auth.token.rejected` | warn |
@@ -248,4 +261,6 @@ config version:
    now uses the same evaluator in-process for profile reads — the gateway is still the only
    enforcement point for route-level permissions.
 4. The per-replica event queue is auto-deleting. If a gateway is partitioned from RabbitMQ for longer
-   than a config change takes, it keeps serving stale rules until reconnect, when it reloads.
+   than a config change takes, it misses the event and keeps serving stale rules: the retry of §5
+   only follows a fetch that *failed*, and here none was attempted. It catches up at its next restart
+   or the next change after reconnecting.

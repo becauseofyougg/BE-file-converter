@@ -11,7 +11,7 @@ jest.mock('@nestjs-cls/transactional', () => ({
 }));
 
 import type { TransactionHost } from '@nestjs-cls/transactional';
-import type { Role } from '@prisma-clients/identity';
+import { Prisma, type Role } from '@prisma-clients/identity';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { AppError } from '@core/errors/app-error';
@@ -30,6 +30,13 @@ function buildRole(overrides: Partial<Role> = {}): Role {
     ...overrides,
   } as Role;
 }
+
+/** What Prisma throws when the `roles.name` unique index refuses a write. */
+const uniqueViolation = () =>
+  new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+  });
 
 describe('RolesService', () => {
   let role: {
@@ -115,6 +122,26 @@ describe('RolesService', () => {
       );
       expect(role.create).not.toHaveBeenCalled();
     });
+
+    /** Both requests passed the pre-check; the unique index caught the second. */
+    it('answers 409, not 500, when a concurrent create took the name', async () => {
+      role.create.mockRejectedValue(uniqueViolation());
+
+      await expect(
+        service.create({ name: 'SUPPORT', ...actor }),
+      ).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.ROLE_ALREADY_EXISTS }),
+      );
+      expect(config.invalidate).not.toHaveBeenCalled();
+    });
+
+    it('lets any other database failure through untouched', async () => {
+      role.create.mockRejectedValue(new Error('connection reset'));
+
+      await expect(
+        service.create({ name: 'SUPPORT', ...actor }),
+      ).rejects.toThrow('connection reset');
+    });
   });
 
   describe('update', () => {
@@ -170,6 +197,16 @@ describe('RolesService', () => {
 
       expect(role.update.mock.calls[0][0].data.description).toBe(
         'Reads profiles',
+      );
+    });
+
+    it('answers 409 when a concurrent rename took the name', async () => {
+      role.update.mockRejectedValue(uniqueViolation());
+
+      await expect(
+        service.update('role-1', { name: 'HELPDESK', ...actor }),
+      ).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.ROLE_ALREADY_EXISTS }),
       );
     });
 

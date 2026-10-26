@@ -1,9 +1,12 @@
+import type { IncomingMessage } from 'node:http';
+
 import type { ExecutionContext } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { AppError } from '@core/errors/app-error';
+import { requestLogUserId } from '@obs/request-log';
 import { AuthenticationGuard } from './authentication.guard';
 import type { Authenticator } from './authenticator';
 import type { AuthenticatedRequest, RequestUser } from './request-user';
@@ -109,6 +112,45 @@ describe('AuthenticationGuard', () => {
         httpStatus: 401,
       }),
     );
+  });
+
+  /** An authenticator that refuses logs why; no credential at all is ours. */
+  it('logs a request that carried no credential', async () => {
+    const { context, request } = httpContext();
+    request.url = '/users/me';
+    const guard = guardWith(answering(null));
+    const warn = jest
+      .spyOn(guard['logger'], 'warn')
+      .mockImplementation(() => undefined);
+
+    await expect(guard.canActivate(context)).rejects.toThrow(AppError);
+    expect(warn).toHaveBeenCalledWith({
+      event: 'auth.token.rejected',
+      reason: 'missing',
+      route: '/users/me',
+    });
+  });
+
+  it('logs nothing of its own when an authenticator refused', async () => {
+    const { context } = httpContext();
+    const guard = guardWith(
+      answering(new AppError(ERROR_CODES.TOKEN_EXPIRED, 'Expired', 401)),
+    );
+    const warn = jest.spyOn(guard['logger'], 'warn');
+
+    await expect(guard.canActivate(context)).rejects.toThrow(AppError);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  /** So the request's own log line says whose it was. */
+  it('names the caller on the raw request, where pino-http reads it', async () => {
+    const { context, request } = httpContext();
+    const raw = {} as IncomingMessage;
+    (request as { raw: IncomingMessage }).raw = raw;
+
+    await guardWith(answering(ALICE)).canActivate(context);
+
+    expect(requestLogUserId(raw)).toBe('alice');
   });
 
   /** Misconfiguration must lock the door, not open it. */

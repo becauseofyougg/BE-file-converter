@@ -102,6 +102,17 @@ code rather than a second implementation of the same rules
 The link gets the short life a login link gets, for the same reason: a live one moves the account to
 whoever opens it.
 
+**Starting over is a resend.** There is no separate resend route; calling this again *is* asking for
+another mail, so it is held to the same limits. While a challenge is pending, a second call rotates it
+— a new secret, onto the new address if it changed, the same `challengeId` — and inside 60 s of the
+last mail, or past 5 in an hour, it is `429 RESEND_TOO_SOON` with `retryAfterSeconds`. Issuing a fresh
+challenge each time used to reset both counters, so every call mailed a new code and only the per-IP
+throttle stood in the way.
+
+**An erased account is refused here and at confirmation** (`404` / `CONFIRMATION_INVALID`). Its access
+token outlives it by up to 15 minutes, and without the check that was enough to claim a new address and
+write a real, verified email back onto the anonymised row.
+
 **The address being claimed lives on the challenge row**, not in the confirming request. That is what
 makes the address that was proved necessarily the address that gets applied — taking it from the
 confirmation instead would let a code mailed to one address be quoted back alongside another.
@@ -130,8 +141,9 @@ email-verification code — a weaker challenge with a day-long link — would mo
 the client is confused about which account it is changing, and applying it anyway would be worse.
 
 The address is re-checked for collisions *after* the code is consumed. Somebody may have claimed it
-during the ten minutes; the citext unique index is the real guarantee, and this turns it into a `409`
-rather than a constraint violation surfacing as a `500`.
+during the ten minutes. The citext unique index is the real guarantee: two claims racing past the
+re-check together hit it, and its violation is translated into the same `409` rather than surfacing as
+a `500`. The administrator's `PATCH` gets the same treatment.
 
 ### 4.3 The old address is told
 
@@ -158,6 +170,14 @@ what stops it being used to post letters.
 Audit (§1.5) logs `actorUserId`, `targetUserId`, the field **names** and the outcome. Never the values,
 and never the address being claimed — those are the thing being protected, and a log that copies them
 doubles the number of places they have to be protected in.
+
+| Event | Outcomes |
+|---|---|
+| `users.profile.updated` | `ok`, `forbidden`, `not_found`, `field_not_writable` (with `refusedFields`), `email_in_use` |
+| `users.email_change.requested` | `started` (with the method), `forbidden`, `not_found`, `same_address`, `email_in_use`, `resend_too_soon` |
+| `auth.verification.failed`, `type: email_change` | `unknown_challenge`, `wrong_type`, `wrong_owner`, and from the code check `invalid` / `expired` / `attempts_exceeded` / `used` / `lost_race` |
+| `users.email_change.failed` | `account_removed`, `email_in_use` — after the code was accepted |
+| `users.email_change.confirmed` | |
 
 ---
 
