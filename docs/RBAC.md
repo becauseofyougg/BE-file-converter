@@ -184,7 +184,7 @@ The config is data, but it cannot start empty: the evaluator fails closed, so an
 everyone out of everything *including the admin endpoints that would fix it*. The migration seeds:
 
 - roles `USER` and `ADMIN`, both `is_system`
-- permissions `users` (read, update, delete, list — `list` added by `20260925090000_user_list`), `conversions` (create, read, delete), `rbac` (read, manage)
+- permissions `users` (read, update, delete, list — `list` added by `20260925090000_user_list`), `conversions` (create, read, delete), `rbac` (read, manage), `transformations` (read — another user's transformation history; added, with ADMIN's grant, by `20261012130000_transformations_permission`, see [TRANSFORMATION-HISTORY.md](TRANSFORMATION-HISTORY.md))
 - `USER` → `users@read,update` and all of `conversions`; `ADMIN` → everything
 
 Every registration is assigned `USER` **in the same transaction as the account**, since a user with no

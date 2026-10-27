@@ -7,14 +7,16 @@ import { GatewayConfig } from '../config/gateway.config';
 
 export const IDENTITY_CLIENT = 'IDENTITY_CLIENT';
 export const CONVERSION_COMMANDS_CLIENT = 'CONVERSION_COMMANDS_CLIENT';
+export const CONVERSION_CLIENT = 'CONVERSION_CLIENT';
 
 /**
- * The gateway's two outbound channels, deliberately kept distinct:
+ * The gateway's outbound channels, deliberately kept distinct:
  *
- * - identity is **request/response** over a plain queue — the caller waits;
- * - conversion work is a **command** published to a direct exchange and routed
- *   by format family, so the ffmpeg workers and the sharp workers are separate
- *   deployments consuming separate queues.
+ * - identity and conversion each answer **request/response** over a plain
+ *   queue — the caller waits (`/api/convert` converts while it does);
+ * - queued conversion work is a **command** published to a direct exchange
+ *   and routed by format family, so the ffmpeg workers and the sharp workers
+ *   are separate deployments consuming separate queues.
  */
 @Global()
 @Module({
@@ -28,6 +30,19 @@ export const CONVERSION_COMMANDS_CLIENT = 'CONVERSION_COMMANDS_CLIENT';
           options: {
             urls: [config.get('RABBITMQ_URL')],
             queue: QUEUES.IDENTITY_RPC,
+            queueOptions: { durable: true },
+            persistent: true,
+          },
+        }),
+      },
+      {
+        name: CONVERSION_CLIENT,
+        inject: [ConfigService],
+        useFactory: (config: ConfigService<GatewayConfig>) => ({
+          transport: Transport.RMQ as const,
+          options: {
+            urls: [config.get('RABBITMQ_URL')],
+            queue: QUEUES.CONVERSION_RPC,
             queueOptions: { durable: true },
             persistent: true,
           },
