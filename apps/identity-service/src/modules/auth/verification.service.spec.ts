@@ -171,6 +171,28 @@ describe('VerificationService', () => {
       );
     });
 
+    /** Every refusal is a failed confirmation, not only a wrong code. */
+    it.each([
+      ['expired', { expiresAt: new Date(Date.now() - 1) }, '123456'],
+      ['attempts_exceeded', { attempts: MAX_ATTEMPTS }, '123456'],
+      ['used', { usedAt: new Date() }, '123456'],
+      ['invalid', {}, '000000'],
+    ] as const)('logs a %s refusal', async (reason, overrides, submitted) => {
+      const warn = jest.spyOn(service['logger'], 'warn');
+
+      await expect(
+        service.consume(buildToken(overrides), submitted),
+      ).rejects.toThrow(AppError);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'auth.verification.failed',
+          userId: 'user-1',
+          type: 'email_verification',
+          reason,
+        }),
+      );
+    });
+
     it('refuses a challenge that was already used', async () => {
       const token = buildToken({ usedAt: new Date() });
 
@@ -247,6 +269,26 @@ describe('VerificationService', () => {
         where: { id: token.id },
         data: expect.objectContaining({ attempts: 0, usedAt: null }),
       });
+    });
+
+    it('moves an email-change challenge onto a new address when given one', async () => {
+      await service.rotate(
+        buildToken({ type: VERIFICATION_TOKEN_TYPES.EMAIL_CHANGE }),
+        'second@example.com',
+      );
+
+      expect(db.update).toHaveBeenCalledWith({
+        where: { id: 'token-1' },
+        data: expect.objectContaining({ newEmail: 'second@example.com' }),
+      });
+    });
+
+    it('leaves the address alone when not given one', async () => {
+      await service.rotate(buildToken());
+
+      expect(
+        (db.update.mock.calls[0][0] as { data: object }).data,
+      ).not.toHaveProperty('newEmail');
     });
 
     it('will not rotate while the resend interval is still open', async () => {

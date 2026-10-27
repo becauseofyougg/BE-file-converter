@@ -37,7 +37,7 @@ describe('ProfileReadRateLimitGuard', () => {
     reflector = new Reflector();
     jest
       .spyOn(reflector, 'getAllAndOverride')
-      .mockReturnValue({ limit: 60, ttlMs: 3_600_000 });
+      .mockReturnValue({ bucket: 'read', limit: 60, ttlMs: 3_600_000 });
 
     guard = new ProfileReadRateLimitGuard(storage, reflector);
   });
@@ -64,6 +64,24 @@ describe('ProfileReadRateLimitGuard', () => {
    * Polling your own profile is ordinary, reveals nothing about anyone else,
    * and counting it would let a busy tab lock its own user out.
    */
+  it('counts each bucket under its own key', async () => {
+    jest
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockReturnValue({ bucket: 'delete', limit: 10, ttlMs: 3_600_000 });
+
+    await guard.canActivate(
+      buildContext({ userId: TARGET }, { id: VIEWER, roles: ['ADMIN'] }),
+    );
+
+    expect(storage.increment).toHaveBeenCalledWith(
+      `profile-delete:${VIEWER}`,
+      3_600_000,
+      10,
+      expect.any(Number),
+      'profile-delete',
+    );
+  });
+
   it('does not count a self-read', async () => {
     await expect(
       guard.canActivate(
@@ -118,16 +136,42 @@ describe('ProfileReadRateLimitGuard', () => {
  */
 describe('ProfileReadRateLimitGuard with the real throttler storage', () => {
   let storage: ThrottlerStorageService;
+  let reflector: Reflector;
   let guard: ProfileReadRateLimitGuard;
 
   beforeEach(() => {
     storage = new ThrottlerStorageService();
-    const reflector = new Reflector();
+    reflector = new Reflector();
     jest
       .spyOn(reflector, 'getAllAndOverride')
-      .mockReturnValue({ limit: 2, ttlMs: 3_600_000 });
+      .mockReturnValue({ bucket: 'read', limit: 2, ttlMs: 3_600_000 });
     guard = new ProfileReadRateLimitGuard(storage, reflector);
     jest.spyOn(guard['logger'], 'warn').mockImplementation(() => undefined);
+  });
+
+  /**
+   * The storage blocks a whole key once any limit checked against it is
+   * crossed. With one shared key, crossing the tight deletion limit locked an
+   * administrator out of reading profiles for the rest of the hour.
+   */
+  it('keeps a tripped deletion limit from blocking reads', async () => {
+    const as = (bucket: 'read' | 'delete', limit: number) => {
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockReturnValue({ bucket, limit, ttlMs: 3_600_000 });
+
+      return guard.canActivate(
+        buildContext({ userId: TARGET }, { id: VIEWER, roles: ['ADMIN'] }),
+      );
+    };
+
+    await as('read', 60);
+    await as('delete', 1);
+    await expect(as('delete', 1)).rejects.toThrow(
+      expect.objectContaining({ code: ERROR_CODES.RATE_LIMITED }),
+    );
+
+    await expect(as('read', 60)).resolves.toBe(true);
   });
 
   afterEach(() => storage.onApplicationShutdown());

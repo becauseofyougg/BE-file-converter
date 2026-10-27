@@ -236,6 +236,88 @@ describe('identity RbacController', () => {
     });
   });
 
+  /** docs/RBAC.md §10: the result of a write is logged, refusals included. */
+  describe('auditing refusals', () => {
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest
+        .spyOn(controller['logger'], 'warn')
+        .mockImplementation(() => undefined);
+    });
+
+    it('logs a refused write with the actor, the target and the code', async () => {
+      roles.remove.mockRejectedValue(
+        new AppError(ERROR_CODES.ENTITY_IN_USE, 'In use', 409),
+      );
+
+      await expect(
+        controller.deleteRole({ id: 'role-1', ...ACTOR }, context),
+      ).rejects.toThrow(AppError);
+      expect(warn).toHaveBeenCalledWith({
+        event: 'rbac.role.delete.rejected',
+        actorUserId: 'admin-1',
+        targetId: 'role-1',
+        code: ERROR_CODES.ENTITY_IN_USE,
+        status: 409,
+      });
+    });
+
+    it.each([
+      [
+        'createPermission',
+        () => permissions.create,
+        { name: 'users', actions: ['read'] },
+        'rbac.permission.create.rejected',
+      ],
+      [
+        'updateGrant',
+        () => grants.update,
+        { id: 'grant-1', actions: ['summon'] },
+        'rbac.grant.update.rejected',
+      ],
+      [
+        'assignUserRoles',
+        () => userRoles.replace,
+        { userId: 'user-1', roles: ['NOPE'] },
+        'rbac.user_roles.replace.rejected',
+      ],
+    ] as const)(
+      '%s logs its refusal under its own name',
+      async (method, mockFor, dto, event) => {
+        mockFor().mockRejectedValue(
+          new AppError(ERROR_CODES.VALIDATION_FAILED, 'No', 400),
+        );
+
+        await expect(
+          (
+            controller[method] as unknown as (
+              dto: object,
+              context: RmqContext,
+            ) => Promise<unknown>
+          )({ ...dto, ...ACTOR }, context),
+        ).rejects.toThrow(AppError);
+        expect(warn).toHaveBeenCalledWith(expect.objectContaining({ event }));
+      },
+    );
+
+    /** A crash is not a refusal; the RPC filter logs it with its stack. */
+    it('leaves a crash to the RPC filter', async () => {
+      roles.create.mockRejectedValue(new Error('connection lost'));
+
+      await expect(
+        controller.createRole({ name: 'SUPPORT', ...ACTOR }, context),
+      ).rejects.toThrow('connection lost');
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('logs nothing extra for a write that succeeds', async () => {
+      await controller.createRole({ name: 'SUPPORT', ...ACTOR }, context);
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
   describe('acking', () => {
     /** A business refusal is a completed handling; retrying it is pointless. */
     it('acks a refusal rather than leaving it to redeliver', async () => {

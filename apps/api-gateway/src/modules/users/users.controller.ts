@@ -51,8 +51,13 @@ import { UsersService } from './users.service';
 
 const HOUR_MS = 60 * 60 * 1000;
 
-const ProfileReadLimit = (limit: number, ttlMs: number) =>
+const PerViewerLimit = (
+  bucket: ProfileReadRateLimit['bucket'],
+  limit: number,
+  ttlMs: number,
+) =>
   SetMetadata(PROFILE_READ_RATE_LIMIT, {
+    bucket,
     limit,
     ttlMs,
   } satisfies ProfileReadRateLimit);
@@ -103,7 +108,7 @@ export class UsersController {
   })
   @Get(':userId')
   @Throttle({ default: { limit: 300, ttl: HOUR_MS } })
-  @ProfileReadLimit(60, HOUR_MS)
+  @PerViewerLimit('read', 60, HOUR_MS)
   getProfile(
     @Param() params: UserParamsDto,
     @CurrentUser() viewer: RequestUser,
@@ -147,7 +152,7 @@ export class UsersController {
   })
   @Patch(':userId')
   @Throttle({ default: { limit: 60, ttl: HOUR_MS } })
-  @ProfileReadLimit(60, HOUR_MS)
+  @PerViewerLimit('update', 60, HOUR_MS)
   updateProfile(
     @Param() params: UserParamsDto,
     @Body() patch: UpdateUserDto,
@@ -261,7 +266,7 @@ export class UsersController {
   })
   @Delete(':userId')
   @Throttle({ default: { limit: 5, ttl: HOUR_MS } })
-  @ProfileReadLimit(10, HOUR_MS)
+  @PerViewerLimit('delete', 10, HOUR_MS)
   async deleteUser(
     @Param() params: UserParamsDto,
     @Body() dto: DeleteUserDto,

@@ -127,7 +127,16 @@ export class VerificationService {
    * one-in-a-million code. Opening a *new* challenge instead would either
    * strand the client's handle or need the response to leak a fresh one.
    */
-  async rotate(token: VerificationToken): Promise<IssuedChallenge> {
+  async rotate(
+    token: VerificationToken,
+    /**
+     * A different address for an `email_change` challenge. Rotating rather than
+     * issuing anew keeps the resend limits counting across addresses — a fresh
+     * challenge would start them from zero, and switching the address on every
+     * request would then send mail without limit.
+     */
+    newEmail?: string,
+  ): Promise<IssuedChallenge> {
     this.assertResendAllowed(token);
 
     const method = this.settings.confirmationMethod();
@@ -146,6 +155,7 @@ export class VerificationService {
         attempts: 0,
         resendCount: this.withinResendWindow(token) ? token.resendCount + 1 : 1,
         lastSentAt: new Date(),
+        ...(newEmail === undefined ? {} : { newEmail }),
       },
     });
 
@@ -193,6 +203,8 @@ export class VerificationService {
     submitted: string,
   ): Promise<VerificationToken> {
     if (token.usedAt !== null) {
+      this.logFailure(token, 'used');
+
       throw new AppError(
         ERROR_CODES.CONFIRMATION_INVALID,
         'Confirmation is invalid',
@@ -201,6 +213,8 @@ export class VerificationService {
     }
 
     if (token.expiresAt.getTime() <= Date.now()) {
+      this.logFailure(token, 'expired');
+
       throw new AppError(
         ERROR_CODES.CONFIRMATION_EXPIRED,
         'Confirmation has expired, request a new one',
@@ -209,6 +223,8 @@ export class VerificationService {
     }
 
     if (token.attempts >= MAX_ATTEMPTS) {
+      this.logFailure(token, 'attempts_exceeded');
+
       throw new AppError(
         ERROR_CODES.CONFIRMATION_ATTEMPTS_EXCEEDED,
         'Too many incorrect attempts, request a new code',
@@ -224,12 +240,7 @@ export class VerificationService {
         data: { attempts: { increment: 1 } },
       });
 
-      this.logger.warn({
-        event: 'auth.verification.failed',
-        userId: token.userId,
-        reason: 'invalid',
-        attempts,
-      });
+      this.logFailure(token, 'invalid', { attempts });
 
       throw attempts >= MAX_ATTEMPTS
         ? new AppError(
@@ -250,6 +261,8 @@ export class VerificationService {
     });
 
     if (result.count === 0) {
+      this.logFailure(token, 'lost_race');
+
       throw new AppError(
         ERROR_CODES.CONFIRMATION_INVALID,
         'Confirmation is invalid',
@@ -303,6 +316,25 @@ export class VerificationService {
     await this.db.verificationToken.updateMany({
       where: { userId, type, usedAt: null },
       data: { usedAt: new Date() },
+    });
+  }
+
+  /**
+   * One line per refusal, whatever its cause — docs/REGISTRATION.md §9. The
+   * type is there because registration, login and email change all consume
+   * through here, and a burst means something different for each.
+   */
+  private logFailure(
+    token: VerificationToken,
+    reason: 'used' | 'expired' | 'attempts_exceeded' | 'invalid' | 'lost_race',
+    extra: Record<string, unknown> = {},
+  ): void {
+    this.logger.warn({
+      event: 'auth.verification.failed',
+      userId: token.userId,
+      type: token.type,
+      reason,
+      ...extra,
     });
   }
 

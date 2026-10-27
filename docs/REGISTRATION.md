@@ -185,6 +185,12 @@ rather than a convention.
 Rotating resets `attempts`, which is safe because the resend limits bound the total: 5 resends an
 hour × 5 guesses each is 25 attempts against a one-in-a-million code.
 
+**Only a caller quoting the `challengeId` is ever told to wait.** Asked by email, a `429` inside the
+resend limits would itself answer "does this address have a pending account?" — an unknown address
+never reaches the cooldown, so two calls in a row would tell the two apart. The email path therefore
+answers `202` inside the limits too and sends nothing, exactly as re-registration does (§8); only the
+holder of the handle, who already has the proof, gets `RESEND_TOO_SOON`.
+
 ---
 
 ## 6. Flows
@@ -268,7 +274,11 @@ registration throttle is what makes enumeration expensive rather than impossible
 gives which guarantee is the point; pretending both are equally private is not.
 
 A duplicate must also be caught by the unique index, not only by a pre-check: two concurrent requests
-both pass a `SELECT` before either inserts. The `23505` violation is translated into the same `409`.
+both pass a `SELECT` before either inserts. When the insert fails with the unique violation (Prisma
+`P2002`, Postgres `23505`), registration runs once more in a fresh transaction — the failed insert aborted
+the first — and that pass finds the winner's row, so the loser gets exactly the answer a sequential
+duplicate would: the `409` with confirmation off, the neutral `202` with it on. Hashing happens before the
+transaction, so the retry costs no second argon2 run.
 
 ---
 
@@ -281,9 +291,15 @@ Per [NFR §6](NON-FUNCTIONAL-REQUIREMENTS.md#6-logging-of-critical-events), ever
 |---|---|---|
 | `auth.register.attempt` / `.success` / `.rejected` | info / warn | rejection reason as a code, never the password |
 | `auth.register.duplicate_email` | warn | a burst is an enumeration probe |
+| `auth.register.concurrent_duplicate` | warn | the unique index caught a race, see §8 |
 | `auth.verification.sent` / `.resent` | info | method (`otp`/`link`), never the code or token |
+| `auth.verification.resend_suppressed` | info | an email-keyed resend inside the limits, answered `202` with no mail (§5.4) |
 | `auth.verification.success` | info | |
-| `auth.verification.failed` | warn | reason: invalid / expired / attempts exceeded |
+| `auth.verification.failed` | warn | reason: `invalid` / `expired` / `attempts_exceeded` / `used` / `lost_race` / `unknown_challenge` / `account_removed`, plus the challenge type |
+
+`.rejected` covers refusals identity-service makes (the password policy). A malformed body is refused by
+the gateway's `ValidationPipe` before any RPC, and a throttled one by the rate limiter; neither reaches
+identity, so neither produces an `auth.register.*` line.
 | `auth.verification.cleanup` | info | how many unverified accounts were removed |
 
 **Never logged:** the password, the password hash, the OTP, the raw or hashed token, the verification
@@ -371,8 +387,8 @@ Login is [AUTHENTICATION.md](AUTHENTICATION.md); sessions, refresh and logout ar
 [AUTHORIZATION.md](AUTHORIZATION.md).
 
 **Not yet built:** password reset, which is why `AUTH_CONFIRM_PASSWORD_RESET` is read by the settings
-service but not acted on. The mail templates themselves belong to `notification-service` and are still
-to come — identity publishes the events, nothing consumes them yet.
+service but not acted on. The mails are rendered and sent by `notification-service`, which consumes all
+three registration events ([notifications.controller.ts](../apps/notification-service/src/modules/notifications/notifications.controller.ts)).
 
 **Still to confirm with the mentor:**
 

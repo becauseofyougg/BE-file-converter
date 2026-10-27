@@ -381,6 +381,57 @@ describe('LoginService', () => {
       ).rejects.toThrow(AppError);
     });
 
+    /** Every failed confirmation is logged, not only a wrong code. */
+    it.each([
+      ['unknown_challenge', null],
+      [
+        'wrong_type',
+        {
+          ...loginToken,
+          type: VERIFICATION_TOKEN_TYPES.EMAIL_VERIFICATION,
+        } as VerificationToken,
+      ],
+    ])('logs a %s refusal', async (reason, found) => {
+      const warn = jest.spyOn(service['logger'], 'warn');
+      verification.findLiveByChallengeId.mockResolvedValue(found);
+
+      await expect(
+        service.confirmLogin({
+          challengeId: 'challenge-1',
+          code: '123456',
+          correlationId: CORRELATION_ID,
+        }),
+      ).rejects.toThrow(AppError);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'auth.verification.failed',
+          type: VERIFICATION_TOKEN_TYPES.LOGIN_CONFIRMATION,
+          reason,
+        }),
+      );
+    });
+
+    it('logs a confirmation for an account removed meanwhile', async () => {
+      const warn = jest.spyOn(service['logger'], 'warn');
+      users.findById.mockResolvedValue(null);
+
+      await expect(
+        service.confirmLogin({
+          challengeId: 'challenge-1',
+          code: '123456',
+          correlationId: CORRELATION_ID,
+        }),
+      ).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.CONFIRMATION_INVALID }),
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: 'account_removed',
+          userId: 'user-1',
+        }),
+      );
+    });
+
     it('refuses to complete a login into an account locked meanwhile', async () => {
       users.findById.mockResolvedValue(
         buildUser({ lockedUntil: new Date(Date.now() + 60_000) }),

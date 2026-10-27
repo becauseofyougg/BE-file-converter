@@ -20,6 +20,12 @@ export interface UserListCursor {
   order: SortOrder;
 }
 
+/** Why a cursor was refused — carried in the error's details and the log. */
+export type CursorRefusal = 'invalid' | 'sort_mismatch' | 'stale';
+
+export const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-9a-f][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export function encodeCursor(cursor: UserListCursor): string {
   return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
 }
@@ -43,10 +49,14 @@ export function decodeCursor(
     throw invalidCursor();
   }
 
+  // The id is checked for format, not only for being a string: it goes straight
+  // into a query against a `uuid` column, where anything else is a driver
+  // error — and an untranslated driver error is a 500, not the 400 this is.
   if (
     typeof parsed !== 'object' ||
     parsed === null ||
-    typeof (parsed as UserListCursor).id !== 'string'
+    typeof (parsed as UserListCursor).id !== 'string' ||
+    !UUID_PATTERN.test((parsed as UserListCursor).id)
   ) {
     throw invalidCursor();
   }
@@ -54,16 +64,34 @@ export function decodeCursor(
   const cursor = parsed as UserListCursor;
 
   if (cursor.sort !== expected.sort || cursor.order !== expected.order) {
-    throw new AppError(
-      ERROR_CODES.VALIDATION_FAILED,
+    throw cursorRefused(
+      'sort_mismatch',
       'The cursor belongs to a different sort order; start the list again',
-      400,
     );
   }
 
   return cursor;
 }
 
+/**
+ * A well-formed cursor whose account no longer exists — the cleanup job deletes
+ * accounts left unconfirmed for a week. Resuming from a row that is gone yields
+ * an empty page with no next cursor, which reads as the end of the list; this
+ * says what actually happened instead.
+ */
+export function staleCursor(): AppError {
+  return cursorRefused(
+    'stale',
+    'The cursor points at an account that no longer exists; start the list again',
+  );
+}
+
 function invalidCursor(): AppError {
-  return new AppError(ERROR_CODES.VALIDATION_FAILED, 'Invalid cursor', 400);
+  return cursorRefused('invalid', 'Invalid cursor');
+}
+
+function cursorRefused(reason: CursorRefusal, message: string): AppError {
+  return new AppError(ERROR_CODES.VALIDATION_FAILED, message, 400, {
+    reason,
+  });
 }

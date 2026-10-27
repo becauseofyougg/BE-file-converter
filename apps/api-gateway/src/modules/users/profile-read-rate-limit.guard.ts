@@ -13,6 +13,13 @@ import { AppError } from '@core/errors/app-error';
 import type { AuthenticatedRequest } from '../auth/request-user';
 
 export interface ProfileReadRateLimit {
+  /**
+   * Which counter the route draws on. Each has its own: the storage blocks a
+   * whole key once *any* limit checked against it is crossed, so routes sharing
+   * one key with different limits let the tightest lock out the rest — ten
+   * deletions' worth of reads blocked an administrator's reads for an hour.
+   */
+  bucket: 'read' | 'update' | 'delete';
   limit: number;
   ttlMs: number;
 }
@@ -20,9 +27,9 @@ export interface ProfileReadRateLimit {
 export const PROFILE_READ_RATE_LIMIT = 'PROFILE_READ_RATE_LIMIT';
 
 /**
- * Rate-limits reading *other people's* profiles, keyed on the viewer —
+ * Rate-limits acting on *other people's* profiles, keyed on the viewer —
  * docs/USER-PROFILE.md §1.4, which asks for a limit "especially for viewing
- * others".
+ * others". Reads, updates and deletions each count separately (see `bucket`).
  *
  * Per viewer rather than per IP, because the account is what holds the
  * permission: someone with `users@read` who starts walking the user table does
@@ -65,7 +72,7 @@ export class ProfileReadRateLimitGuard implements CanActivate {
     // Milliseconds, as throttler v6 takes it — seconds here shrank the window
     // a thousandfold and left the limit counting nothing.
     const record = await this.storage.increment(
-      `profile-read:${viewerId}`,
+      `profile-${config.bucket}:${viewerId}`,
       config.ttlMs,
       config.limit,
       // Blocked for the rest of the window once over the limit. With 0 the
@@ -73,13 +80,14 @@ export class ProfileReadRateLimitGuard implements CanActivate {
       // so the request that crossed the line went through and counting began
       // again: the limit was never enforced, whatever the window.
       config.ttlMs,
-      'profile-read',
+      `profile-${config.bucket}`,
     );
 
     if (record.isBlocked) {
       this.logger.warn({
         event: 'users.profile.rate_limited',
         dimension: 'viewer',
+        bucket: config.bucket,
         viewerUserId: viewerId,
       });
 

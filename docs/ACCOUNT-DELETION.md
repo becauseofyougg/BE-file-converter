@@ -175,6 +175,13 @@ Audit (§1.5) records `actorUserId`, `targetUserId`, the mode (`self` / `admin`)
 the caller's stated reason. Never a value being erased — an audit trail that copies the personal
 data whose destruction it is recording would be a strange thing to build.
 
+| Event | Outcomes |
+|---|---|
+| `users.deletion.requested` | `deleted`, `confirmation_required` (with the method), `forbidden`, `not_found` — including a repeat call on an account already erased |
+| `auth.verification.failed`, `type: account_deletion` | `unknown_challenge`, `wrong_type`, `wrong_owner`, `not_session_owner`, and from the code check `invalid` / `expired` / `attempts_exceeded` / `used` / `lost_race` |
+| `users.deletion.failed` | `account_removed` — the code was accepted, but an administrator had erased the account meanwhile |
+| `users.deletion.completed` | a self-erasure confirmed |
+
 ---
 
 ## 8. Where the code lives

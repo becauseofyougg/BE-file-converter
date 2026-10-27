@@ -8,6 +8,7 @@ import { ConfigService } from '@core/config/config.service';
 import { BaseConfig } from '@core/config/config.types';
 import { acceptCorrelationId } from '@core/messaging/correlation-id';
 import { CORRELATION_ID_HEADER } from '@contracts/messaging/topology';
+import { requestLogUserId } from './request-log';
 
 /**
  * Human-readable lines on a developer's terminal — when `pino-pretty` is
@@ -47,8 +48,11 @@ export function prettyTransport(
           genReqId: (req: IncomingMessage) =>
             acceptCorrelationId(req.headers?.[CORRELATION_ID_HEADER]) ??
             randomUUID(),
+          // Re-evaluated when the response finishes, which is how the userId
+          // the authentication guard attached reaches the completion line.
           customProps: (req: IncomingMessage) => ({
             correlationId: (req as never as { id: string }).id,
+            userId: requestLogUserId(req),
           }),
 
           // Redaction lives here rather than at the call sites, so it holds even

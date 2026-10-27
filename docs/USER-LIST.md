@@ -116,7 +116,15 @@ is refused. A position in one ordering means nothing in another; interpreting it
 skips and repeats rows, and a `400` is the only answer that cannot be quietly wrong. The cursor is
 also treated as hostile input — it arrives in a query string — so anything that does not decode
 into the exact expected shape is a `400` rather than a page that quietly restarts from the
-beginning.
+beginning. That includes the id's *format*: it goes straight into a query against a `uuid` column,
+and a well-formed cursor carrying `"id": "x"` used to reach the driver and come back as a `500`.
+
+**A cursor whose account is gone is a `400` too.** The cleanup job deletes accounts left unconfirmed
+for a week ([REGISTRATION.md §7](REGISTRATION.md)), and resuming from a row that no longer exists makes
+the query return nothing — which went out as an empty page with `nextCursor: null`, indistinguishable
+from the real end of the list. Only an empty page can be this case, so only an empty page pays the
+primary-key lookup that tells the two apart. An erased account is still a row, and still a valid
+position. Each cursor refusal carries `details.reason`: `invalid`, `sort_mismatch` or `stale`.
 
 **Accounts that have never signed in sort last in both directions.** "Never" is not a date, and
 treating it as the smallest one puts every dormant account at the top of "least recent".
@@ -161,6 +169,15 @@ returns — the same two-name arrangement, and the same reason, as
 Audit (§1.5) records `actorUserId`, the filters, the sort, the limit and how many rows came back.
 **Never `q` itself** — it is whatever an administrator typed, which is routinely somebody's
 address, and a search log is a strange place to accumulate those.
+
+| Event | |
+|---|---|
+| `users.list.read` | a page served, with `returned` |
+| `users.list.forbidden` | no `users@list` |
+| `users.list.rejected` | a cursor refused — `reason` is `invalid`, `sort_mismatch` or `stale` |
+
+A query the gateway refuses on its own — a `limit` out of range, an unknown `sort` — never reaches
+identity; the gateway's request log records it, with the caller's `userId`.
 
 ---
 

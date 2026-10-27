@@ -16,6 +16,8 @@ jest.mock('@nestjs-cls/transactional', () => ({
   TransactionHost: class {},
 }));
 
+import { Prisma } from '@prisma-clients/identity';
+
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { DOMAIN_EVENTS } from '@contracts/events/domain.events';
 import { AppError } from '@core/errors/app-error';
@@ -34,6 +36,13 @@ import {
 
 const VALID_PASSWORD = 'a perfectly fine passphrase';
 const CORRELATION_ID = 'correlation-1';
+
+/** What Prisma throws when the `users.email` unique index refuses an insert. */
+const uniqueViolation = () =>
+  new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+  });
 
 function buildUser(overrides: Partial<User> = {}): User {
   return {
@@ -206,6 +215,45 @@ describe('AuthService', () => {
       await expect(register()).rejects.toThrow(AppError);
       expect(users.create).not.toHaveBeenCalled();
     });
+
+    it('logs the policy refusal with its code', async () => {
+      const warn = jest.spyOn(service['logger'], 'warn');
+      policy.assertMeetsPolicy.mockImplementation(() => {
+        throw new AppError(ERROR_CODES.PASSWORD_TOO_WEAK, 'too weak', 400);
+      });
+
+      await expect(register()).rejects.toThrow(AppError);
+      expect(warn).toHaveBeenCalledWith({
+        event: 'auth.register.rejected',
+        reason: ERROR_CODES.PASSWORD_TOO_WEAK,
+      });
+    });
+
+    /**
+     * Two requests for one address both pass the existence check; the unique
+     * index stops the second insert. That must read as the same 409 a
+     * sequential duplicate gets, not as a 500.
+     */
+    it('answers 409 when a concurrent registration wins the insert', async () => {
+      users.findByEmail
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildUser({ emailVerifiedAt: new Date() }));
+      users.create.mockRejectedValueOnce(uniqueViolation());
+
+      await expect(register()).rejects.toThrow(
+        expect.objectContaining({
+          code: ERROR_CODES.EMAIL_ALREADY_REGISTERED,
+        }),
+      );
+      expect(users.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry a database failure other than the unique index', async () => {
+      users.create.mockRejectedValueOnce(new Error('connection reset'));
+
+      await expect(register()).rejects.toThrow('connection reset');
+      expect(users.findByEmail).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('register with confirmation on', () => {
@@ -320,6 +368,35 @@ describe('AuthService', () => {
       expect(verification.rotate).not.toHaveBeenCalled();
     });
 
+    it('logs that a code went out, and how, without the code itself', async () => {
+      const log = jest.spyOn(service['logger'], 'log');
+
+      await register();
+
+      expect(log).toHaveBeenCalledWith({
+        event: 'auth.verification.sent',
+        userId: 'user-1',
+        method: 'otp',
+      });
+      expect(JSON.stringify(log.mock.calls)).not.toContain(challenge.secret);
+    });
+
+    it('stays neutral when a concurrent registration wins the insert', async () => {
+      users.findByEmail
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildUser({ emailVerifiedAt: new Date() }));
+      users.create.mockRejectedValueOnce(uniqueViolation());
+
+      const result = await register();
+
+      expect(result.status).toBe('confirmation_required');
+      expect(outbox.publish).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.USER_REGISTRATION_ATTEMPTED,
+        expect.anything(),
+        CORRELATION_ID,
+      );
+    });
+
     it('hashes the password even when it creates nothing, so timing says nothing', async () => {
       users.findByEmail.mockResolvedValue(
         buildUser({ emailVerifiedAt: new Date() }),
@@ -397,6 +474,23 @@ describe('AuthService', () => {
       ).rejects.toThrow(
         expect.objectContaining({ code: ERROR_CODES.CONFIRMATION_INVALID }),
       );
+    });
+
+    it('logs a confirmation against an unknown challenge as a failure', async () => {
+      const warn = jest.spyOn(service['logger'], 'warn');
+      verification.findLiveByChallengeId.mockResolvedValue(null);
+
+      await expect(
+        service.verifyEmail({
+          challengeId: 'nope',
+          code: '123456',
+          correlationId: CORRELATION_ID,
+        }),
+      ).rejects.toThrow(AppError);
+      expect(warn).toHaveBeenCalledWith({
+        event: 'auth.verification.failed',
+        reason: 'unknown_challenge',
+      });
     });
 
     it('rejects a submission carrying neither a code nor a token', async () => {
@@ -480,6 +574,76 @@ describe('AuthService', () => {
         CORRELATION_ID,
       );
       expect(result).toEqual({ status: 'accepted' });
+    });
+
+    /**
+     * Asked by email, a 429 would answer "does this address have a pending
+     * account?" — an unknown address never reaches the cooldown.
+     */
+    it('stays neutral when an email-keyed resend hits the cooldown', async () => {
+      users.findByEmail.mockResolvedValue(buildUser());
+      verification.findLiveByUser.mockResolvedValue({
+        id: 'token-1',
+        userId: 'user-1',
+        challengeId: 'challenge-1',
+        method: 'otp',
+        expiresAt: challenge.expiresAt,
+      } as VerificationToken);
+      users.findById.mockResolvedValue(buildUser());
+      verification.assertResendAllowed.mockImplementation(() => {
+        throw new AppError(ERROR_CODES.RESEND_TOO_SOON, 'too soon', 429);
+      });
+
+      await expect(
+        service.resendVerification({
+          email: 'user@example.com',
+          correlationId: CORRELATION_ID,
+        }),
+      ).resolves.toEqual({ status: 'accepted' });
+      expect(verification.rotate).not.toHaveBeenCalled();
+      expect(outbox.publish).not.toHaveBeenCalled();
+    });
+
+    it('still resends to an email when the cooldown has passed', async () => {
+      users.findByEmail.mockResolvedValue(buildUser());
+      verification.findLiveByUser.mockResolvedValue({
+        id: 'token-1',
+        userId: 'user-1',
+      } as VerificationToken);
+      users.findById.mockResolvedValue(buildUser());
+
+      await service.resendVerification({
+        email: 'user@example.com',
+        correlationId: CORRELATION_ID,
+      });
+
+      expect(verification.rotate).toHaveBeenCalled();
+      expect(outbox.publish).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.USER_VERIFICATION_RESENT,
+        expect.anything(),
+        CORRELATION_ID,
+      );
+    });
+
+    /** The handle is the proof, so its holder is told how long to wait. */
+    it('tells a caller quoting the challenge handle to wait', async () => {
+      verification.findLiveByChallengeId.mockResolvedValue({
+        id: 'token-1',
+        userId: 'user-1',
+      } as VerificationToken);
+      users.findById.mockResolvedValue(buildUser());
+      verification.rotate.mockRejectedValue(
+        new AppError(ERROR_CODES.RESEND_TOO_SOON, 'too soon', 429),
+      );
+
+      await expect(
+        service.resendVerification({
+          challengeId: 'challenge-1',
+          correlationId: CORRELATION_ID,
+        }),
+      ).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.RESEND_TOO_SOON }),
+      );
     });
 
     it('sends nothing for an account that is already verified', async () => {

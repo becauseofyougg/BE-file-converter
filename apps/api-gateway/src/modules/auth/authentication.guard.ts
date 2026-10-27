@@ -3,10 +3,12 @@ import {
   type ExecutionContext,
   Inject,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
+import { attachUserToRequestLog } from '@obs/request-log';
 import { IS_PUBLIC } from '@core/auth/public.decorator';
 import { AppError } from '@core/errors/app-error';
 import { AUTHENTICATORS, type Authenticator } from './authenticator';
@@ -26,6 +28,8 @@ import type { AuthenticatedRequest } from './request-user';
  */
 @Injectable()
 export class AuthenticationGuard implements CanActivate {
+  private readonly logger = new Logger(AuthenticationGuard.name);
+
   constructor(
     @Inject(AUTHENTICATORS)
     private readonly authenticators: readonly Authenticator[],
@@ -58,9 +62,23 @@ export class AuthenticationGuard implements CanActivate {
       if (user) {
         request.user = user;
 
+        // So the request's own log line says whose it was — the raw request
+        // is the only one pino-http can see.
+        if (request.raw) {
+          attachUserToRequestLog(request.raw, user.id);
+        }
+
         return true;
       }
     }
+
+    // An authenticator that refused has logged why; this is the case none of
+    // them could — no credential on the request at all.
+    this.logger.warn({
+      event: 'auth.token.rejected',
+      reason: 'missing',
+      route: request.url,
+    });
 
     throw new AppError(
       ERROR_CODES.UNAUTHENTICATED,
