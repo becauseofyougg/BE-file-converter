@@ -50,7 +50,8 @@
     "migrate:deploy:notification": "prisma migrate deploy --schema apps/notification-service/prisma/schema.prisma",
     "migrate:status:notification": "prisma migrate status --schema apps/notification-service/prisma/schema.prisma",
     "studio:notification": "prisma studio --schema apps/notification-service/prisma/schema.prisma",
-    "migrate:deploy": "npm run migrate:deploy:identity && npm run migrate:deploy:conversion && npm run migrate:deploy:notification"
+    "migrate:deploy": "npm run migrate:deploy:identity && npm run migrate:deploy:conversion && npm run migrate:deploy:notification",
+    "docker:start": "docker compose up -d --build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1135.0",

@@ -18,11 +18,11 @@ const SCRIPT: RequestUser = {
   tokenId: 'k-1',
 };
 
-function httpContext(): {
+function httpContext(url = '/'): {
   context: ExecutionContext;
   request: AuthenticatedRequest;
 } {
-  const request = { headers: {} } as AuthenticatedRequest;
+  const request = { headers: {}, url } as AuthenticatedRequest;
 
   return {
     request,
@@ -116,8 +116,7 @@ describe('AuthenticationGuard', () => {
 
   /** An authenticator that refuses logs why; no credential at all is ours. */
   it('logs a request that carried no credential', async () => {
-    const { context, request } = httpContext();
-    request.url = '/users/me';
+    const { context } = httpContext('/users/me');
     const guard = guardWith(answering(null));
     const warn = jest
       .spyOn(guard['logger'], 'warn')
