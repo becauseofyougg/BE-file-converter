@@ -27,9 +27,31 @@ interface MockDelegate {
 /**
  * Stands in for the CLS transaction host. Outside a transaction the real one
  * hands back the base client, which is exactly what a unit test wants.
+ *
+ * `withoutTransaction` is tracked rather than merely passed through: the host
+ * starts inside a transaction, as it is for every real caller of `consume`,
+ * and `outside()` reports whether a write ran after stepping out of it.
  */
-function transactionHost(delegate: MockDelegate): TransactionHost {
-  return { tx: { verificationToken: delegate } } as unknown as TransactionHost;
+function transactionHost(delegate: MockDelegate): {
+  host: TransactionHost;
+  outside: () => boolean;
+} {
+  let insideTransaction = true;
+
+  const host = {
+    tx: { verificationToken: delegate },
+    withoutTransaction: async <T>(write: () => Promise<T>): Promise<T> => {
+      insideTransaction = false;
+
+      try {
+        return await write();
+      } finally {
+        insideTransaction = true;
+      }
+    },
+  } as unknown as TransactionHost;
+
+  return { host, outside: () => !insideTransaction };
 }
 
 function buildToken(
@@ -57,11 +79,12 @@ describe('VerificationService', () => {
   let db: MockDelegate;
   let settings: jest.Mocked<Pick<AuthSettingsService, 'confirmationMethod'>>;
   let service: VerificationService;
+  let outsideTransaction: () => boolean;
 
   beforeEach(() => {
     db = {
       create: jest.fn().mockResolvedValue(buildToken()),
-      update: jest.fn().mockResolvedValue(buildToken()),
+      update: jest.fn().mockResolvedValue(buildToken({ attempts: 1 })),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findFirst: jest.fn().mockResolvedValue(null),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -69,8 +92,11 @@ describe('VerificationService', () => {
 
     settings = { confirmationMethod: jest.fn().mockReturnValue('otp') };
 
+    const { host, outside } = transactionHost(db);
+    outsideTransaction = outside;
+
     service = new VerificationService(
-      transactionHost(db),
+      host,
       settings as unknown as AuthSettingsService,
     );
   });
@@ -140,11 +166,44 @@ describe('VerificationService', () => {
       expect(db.update).toHaveBeenCalledWith({
         where: { id: token.id },
         data: { attempts: { increment: 1 } },
+        select: { attempts: true },
       });
+    });
+
+    /**
+     * Every caller is `@Transactional()` and answers a wrong code by throwing.
+     * Counted inside that transaction, the attempt was rolled back with the
+     * refusal and the cap could never be reached.
+     */
+    it('counts the attempt outside the caller’s transaction', async () => {
+      let countedOutside: boolean | undefined;
+      db.update.mockImplementation(() => {
+        countedOutside = outsideTransaction();
+
+        return Promise.resolve(buildToken({ attempts: 1 }));
+      });
+
+      await expect(service.consume(buildToken(), '000000')).rejects.toThrow(
+        AppError,
+      );
+      expect(countedOutside).toBe(true);
     });
 
     it('reports attempts exceeded on the attempt that reaches the cap', async () => {
       const token = buildToken({ attempts: MAX_ATTEMPTS - 1 });
+      db.update.mockResolvedValue(buildToken({ attempts: MAX_ATTEMPTS }));
+
+      await expect(service.consume(token, '000000')).rejects.toThrow(
+        expect.objectContaining({
+          code: ERROR_CODES.CONFIRMATION_ATTEMPTS_EXCEEDED,
+        }),
+      );
+    });
+
+    /** Concurrent guesses read the same count; the increment tells them apart. */
+    it('decides by the count the increment returned, not the one it read', async () => {
+      const token = buildToken({ attempts: 0 });
+      db.update.mockResolvedValue(buildToken({ attempts: MAX_ATTEMPTS }));
 
       await expect(service.consume(token, '000000')).rejects.toThrow(
         expect.objectContaining({

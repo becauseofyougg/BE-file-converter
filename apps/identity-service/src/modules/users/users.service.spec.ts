@@ -50,16 +50,29 @@ describe('UsersService', () => {
   let verificationToken: { updateMany: jest.Mock };
   let userRoleAssignment: { deleteMany: jest.Mock };
   let service: UsersService;
+  /**
+   * Whether each `user.update` ran inside the caller's transaction. The host
+   * below starts every test inside one, as a `@Transactional()` caller would,
+   * and `withoutTransaction` steps out of it for the length of its callback.
+   */
+  let updatesInsideTransaction: boolean[];
 
   const args = (mock: jest.Mock, call = 0) =>
     mock.mock.calls[call][0] as Record<string, unknown>;
 
   beforeEach(() => {
+    let insideTransaction = true;
+    updatesInsideTransaction = [];
+
     user = {
       findUnique: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({ id: USER_ID }),
-      update: jest.fn().mockResolvedValue({ id: USER_ID }),
+      update: jest.fn().mockImplementation(() => {
+        updatesInsideTransaction.push(insideTransaction);
+
+        return Promise.resolve({ id: USER_ID, failedLoginAttempts: 1 });
+      }),
       deleteMany: jest.fn().mockResolvedValue({ count: 3 }),
     };
     verificationToken = {
@@ -71,6 +84,15 @@ describe('UsersService', () => {
 
     service = new UsersService({
       tx: { user, verificationToken, userRoleAssignment },
+      withoutTransaction: async <T>(write: () => Promise<T>): Promise<T> => {
+        insideTransaction = false;
+
+        try {
+          return await write();
+        } finally {
+          insideTransaction = true;
+        }
+      },
     } as unknown as TransactionHost<never>);
   });
 
@@ -200,14 +222,40 @@ describe('UsersService', () => {
       });
     });
 
-    it('counts the attempt that locks the account', async () => {
+    /** Concurrent failures each see their own count, not the one they read. */
+    it('returns the count the increment produced', async () => {
+      user.update.mockResolvedValueOnce({ failedLoginAttempts: 4 });
+
+      await expect(service.recordLoginFailure(USER_ID)).resolves.toBe(4);
+      expect(args(user.update).select).toEqual({ failedLoginAttempts: true });
+    });
+
+    it('sets the lock without counting the attempt a second time', async () => {
       const until = new Date(Date.now() + 900_000);
       await service.lockLogin(USER_ID, until);
 
-      expect(args(user.update).data).toEqual({
-        failedLoginAttempts: { increment: 1 },
-        lockedUntil: until,
-      });
+      expect(args(user.update).data).toEqual({ lockedUntil: until });
+    });
+
+    /**
+     * Every caller is `@Transactional()` and throws right after these writes.
+     * Inside that transaction they were rolled back by the refusal they
+     * recorded, and no account ever locked.
+     */
+    it.each([
+      ['recordLoginFailure', () => service.recordLoginFailure(USER_ID)],
+      ['lockLogin', () => service.lockLogin(USER_ID, new Date())],
+      ['resetLoginFailures', () => service.resetLoginFailures(USER_ID)],
+    ])('%s commits outside the caller’s transaction', async (_name, write) => {
+      await write();
+
+      expect(updatesInsideTransaction).toEqual([false]);
+    });
+
+    it('leaves a successful login inside the caller’s transaction', async () => {
+      await service.recordSuccessfulLogin(USER_ID);
+
+      expect(updatesInsideTransaction).toEqual([true]);
     });
 
     it('clears both the count and a lapsed lock', async () => {
