@@ -341,7 +341,10 @@ export class LoginService {
    * succeeds is never slowed down at all.
    */
   private async registerFailure(user: SafeUser): Promise<void> {
-    const attempts = user.failedLoginAttempts + 1;
+    // The count the increment returns, not `user.failedLoginAttempts + 1`:
+    // that is the value this request read at its start, and concurrent wrong
+    // passwords all read the same one and all decide to stay under the cap.
+    const attempts = await this.users.recordLoginFailure(user.id);
 
     if (attempts >= this.settings.maxFailedLoginAttempts()) {
       await this.users.lockLogin(
@@ -354,11 +357,7 @@ export class LoginService {
         userId: user.id,
         attempts,
       });
-
-      return;
     }
-
-    await this.users.recordLoginFailure(user.id);
   }
 
   private logFailure(reason: string, userId?: string): void {
