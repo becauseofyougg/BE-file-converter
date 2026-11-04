@@ -74,7 +74,7 @@ export class ApiKeyAuthenticator implements Authenticator {
 
 Nothing else changes. The roles it returns go through the same RBAC as a user's.
 
-### 3.2 HS256 → RS256 / ES256
+### 3.2 HS256 → RS256 / ES256 / EdDSA
 
 A configuration change in the two JWT classes' modules: identity signs with the private key
 (`TokensModule`), and the gateway verifies with the public one (`AuthGuardsModule`,

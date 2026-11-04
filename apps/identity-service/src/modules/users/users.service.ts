@@ -175,26 +175,56 @@ export class UsersService {
     });
   }
 
-  async recordLoginFailure(userId: string): Promise<void> {
-    await this.db.user.update({
-      where: { id: userId },
-      data: { failedLoginAttempts: { increment: 1 } },
+  /**
+   * The brute-force bookkeeping below — the count, the lock, and clearing
+   * them — commits on its own, outside the caller's transaction. Every caller
+   * is `@Transactional()` and follows these writes with a refusal, and a
+   * refusal rolls the transaction back: written inside it, a failure was
+   * erased by the very error that reported it, and no account ever locked.
+   *
+   * Safe because the caller has only read the row by then. An autocommit
+   * update of a row the open transaction had already changed would wait on that
+   * transaction's lock — that is, on itself.
+   */
+  private outsideTransaction<T>(write: () => Promise<T>): Promise<T> {
+    return this.txHost.withoutTransaction(write);
+  }
+
+  /**
+   * Counts a wrong password and returns the count after it — read from the
+   * increment itself, so two failures racing each other see 4 and 5 rather
+   * than both seeing the 3 their requests started with.
+   */
+  async recordLoginFailure(userId: string): Promise<number> {
+    return this.outsideTransaction(async () => {
+      const { failedLoginAttempts } = await this.db.user.update({
+        where: { id: userId },
+        data: { failedLoginAttempts: { increment: 1 } },
+        select: { failedLoginAttempts: true },
+      });
+
+      return failedLoginAttempts;
     });
   }
 
+  /** The attempt that crossed the cap has already been counted. */
   async lockLogin(userId: string, until: Date): Promise<void> {
-    await this.db.user.update({
-      where: { id: userId },
-      data: { failedLoginAttempts: { increment: 1 }, lockedUntil: until },
-    });
+    await this.outsideTransaction(() =>
+      this.db.user.update({
+        where: { id: userId },
+        data: { lockedUntil: until },
+      }),
+    );
   }
 
   /** Any successful password clears both the count and any expired lock. */
   async resetLoginFailures(userId: string): Promise<void> {
-    await this.db.user.update({
-      where: { id: userId },
-      data: { failedLoginAttempts: 0, lockedUntil: null },
-    });
+    await this.outsideTransaction(() =>
+      this.db.user.update({
+        where: { id: userId },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      }),
+    );
   }
 
   /**
