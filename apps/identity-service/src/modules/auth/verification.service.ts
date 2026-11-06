@@ -233,12 +233,7 @@ export class VerificationService {
     }
 
     if (!constantTimeEquals(hashSecret(submitted), token.tokenHash)) {
-      const attempts = token.attempts + 1;
-
-      await this.db.verificationToken.update({
-        where: { id: token.id },
-        data: { attempts: { increment: 1 } },
-      });
+      const attempts = await this.recordFailedAttempt(token.id);
 
       this.logFailure(token, 'invalid', { attempts });
 
@@ -271,6 +266,28 @@ export class VerificationService {
     }
 
     return token;
+  }
+
+  /**
+   * Counts a wrong guess against the challenge and returns the count after it.
+   *
+   * Committed on its own, outside the caller's transaction: every caller of
+   * `consume` is `@Transactional()`, and a wrong guess ends in a throw that
+   * rolls that transaction back. Counted inside it, the attempt vanished with
+   * the refusal, the cap was never reached, and a six-digit code could be
+   * guessed for as long as the rate limits allowed. The caller has only read
+   * the row, so the update does not wait on a lock the caller holds.
+   */
+  private recordFailedAttempt(tokenId: string): Promise<number> {
+    return this.txHost.withoutTransaction(async () => {
+      const { attempts } = await this.db.verificationToken.update({
+        where: { id: tokenId },
+        data: { attempts: { increment: 1 } },
+        select: { attempts: true },
+      });
+
+      return attempts;
+    });
   }
 
   assertResendAllowed(token: VerificationToken): void {
