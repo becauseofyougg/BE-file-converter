@@ -275,6 +275,105 @@ describe('AccountDeletionService', () => {
     });
   });
 
+  /** §1.5: the result of every attempt, failures included. */
+  describe('audit of refusals', () => {
+    let warn: jest.SpyInstance;
+
+    const confirmAs = (viewerUserId = SELF, targetUserId = SELF) =>
+      service.confirmDeletion({
+        targetUserId,
+        viewerUserId,
+        challengeId: 'challenge-1',
+        code: '123456',
+        correlationId: 'correlation-1',
+      });
+
+    beforeEach(() => {
+      warn = jest
+        .spyOn(service['logger'], 'warn')
+        .mockImplementation(() => undefined);
+    });
+
+    it.each([
+      ['self', () => deleteSelf()],
+      [
+        'admin',
+        () => {
+          rbac.check.mockResolvedValue({ allowed: true });
+
+          return deleteOther();
+        },
+      ],
+    ] as const)(
+      'logs a %s request for an account that is not there',
+      async (mode, attempt) => {
+        users.findById.mockResolvedValue(null);
+
+        await expect(attempt()).rejects.toThrow(
+          expect.objectContaining({ code: ERROR_CODES.USER_NOT_FOUND }),
+        );
+        expect(warn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: 'users.deletion.requested',
+            outcome: 'not_found',
+            mode,
+          }),
+        );
+      },
+    );
+
+    it.each([
+      ['unknown_challenge', null, SELF],
+      [
+        'wrong_type',
+        buildToken({
+          type: VERIFICATION_TOKEN_TYPES.LOGIN_CONFIRMATION,
+        } as Partial<VerificationToken>),
+        SELF,
+      ],
+      [
+        'wrong_owner',
+        buildToken({ userId: TARGET } as Partial<VerificationToken>),
+        SELF,
+      ],
+      // The challenge and the path agree, but the session is someone else's.
+      ['not_session_owner', buildToken(), TARGET],
+    ])(
+      'logs a %s confirmation refusal',
+      async (reason, found, viewerUserId) => {
+        verification.findLiveByChallengeId.mockResolvedValue(found);
+
+        await expect(confirmAs(viewerUserId)).rejects.toThrow(
+          expect.objectContaining({ code: ERROR_CODES.CONFIRMATION_INVALID }),
+        );
+        expect(warn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: 'auth.verification.failed',
+            type: VERIFICATION_TOKEN_TYPES.ACCOUNT_DELETION,
+            reason,
+          }),
+        );
+        expect(users.anonymize).not.toHaveBeenCalled();
+      },
+    );
+
+    it('logs a confirmation that found the account already erased', async () => {
+      users.findById.mockResolvedValue(buildUser({ deletedAt: new Date() }));
+
+      await expect(confirmAs()).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.USER_NOT_FOUND }),
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'users.deletion.failed',
+          reason: 'account_removed',
+          mode: 'self',
+        }),
+      );
+      expect(outbox.publish).not.toHaveBeenCalled();
+    });
+  });
+
   describe('idempotence', () => {
     /**
      * §1.6. The row survives its own erasure, so a repeat call finds it — and

@@ -11,6 +11,7 @@ jest.mock('@nestjs-cls/transactional', () => ({
 }));
 
 import type { TransactionHost } from '@nestjs-cls/transactional';
+import { Prisma } from '@prisma-clients/identity';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { AppError } from '@core/errors/app-error';
@@ -84,6 +85,27 @@ describe('GrantsService', () => {
     };
 
   describe('create', () => {
+    /** Both requests passed the pre-check; the unique index caught the second. */
+    it('answers 409, not 500, when a concurrent create took the pair', async () => {
+      grant.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.create({
+          roleId: 'role-1',
+          permissionId: 'permission-1',
+          ...actor,
+        }),
+      ).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.GRANT_ALREADY_EXISTS }),
+      );
+      expect(config.invalidate).not.toHaveBeenCalled();
+    });
+
     it('checks both ends exist before writing anything', async () => {
       await service.create({
         roleId: 'role-1',

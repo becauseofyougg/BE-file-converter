@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEmail,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -83,7 +84,11 @@ export class LoginDto {
     description:
       'No minimum here, unlike registration — refusing a short password would tell an attacker not to bother trying shorter ones.',
   })
+  // Empty is a missing field, not a short password: refusing it reveals
+  // nothing about the policy, and letting it through would count towards the
+  // lockout as a wrong guess.
   @IsString()
+  @IsNotEmpty()
   @MaxLength(PASSWORD_MAX_LENGTH)
   password: string;
 }

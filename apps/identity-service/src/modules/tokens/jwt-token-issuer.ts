@@ -89,6 +89,10 @@ export class JwtTokenIssuer implements TokenIssuer {
     try {
       claims = await this.jwt.verifyAsync<RefreshTokenClaims>(token, {
         secret: this.refreshSecret(),
+        // Pinned to what `issuePair` signs with, as the gateway pins the access
+        // token: a verifier that accepts any algorithm the header names is
+        // letting the token choose how it is checked.
+        algorithms: ['HS256'],
       });
     } catch (error) {
       this.logger.warn({

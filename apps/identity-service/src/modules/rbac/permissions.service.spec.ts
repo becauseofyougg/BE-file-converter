@@ -11,7 +11,7 @@ jest.mock('@nestjs-cls/transactional', () => ({
 }));
 
 import type { TransactionHost } from '@nestjs-cls/transactional';
-import type { Permission } from '@prisma-clients/identity';
+import { Prisma, type Permission } from '@prisma-clients/identity';
 
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { AppError } from '@core/errors/app-error';
@@ -111,6 +111,25 @@ describe('PermissionsService', () => {
           code: ERROR_CODES.PERMISSION_ALREADY_EXISTS,
         }),
       );
+    });
+
+    /** Both requests passed the pre-check; the unique index caught the second. */
+    it('answers 409, not 500, when a concurrent create took the name', async () => {
+      permission.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.create({ name: 'users', actions: ['read'], ...actor }),
+      ).rejects.toThrow(
+        expect.objectContaining({
+          code: ERROR_CODES.PERMISSION_ALREADY_EXISTS,
+        }),
+      );
+      expect(config.invalidate).not.toHaveBeenCalled();
     });
   });
 

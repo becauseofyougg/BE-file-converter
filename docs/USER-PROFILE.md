@@ -124,6 +124,12 @@ does so from wherever they like, and a per-IP limit only counts connections. Sel
 are exempt — polling your own profile is ordinary, reveals nothing about anyone else, and
 counting it would let a busy tab lock its own user out of a support call.
 
+The same guard limits `PATCH` (60/hour) and `DELETE` (10/hour) of someone else's account, each on
+**its own counter** — `profile-read:`, `profile-update:`, `profile-delete:` per viewer. They once
+shared one, and the throttler blocks a whole key once *any* limit checked against it is crossed: an
+administrator who read ten profiles and then erased an account tripped the deletion limit and was
+refused every profile read for the rest of the hour.
+
 Audit (§1.5) logs `viewerUserId`, `targetUserId`, the audience and the outcome
 (`ok` / `forbidden` / `not_found`) — never the profile contents. An audit trail that
 copies the data it audits doubles the number of places that data has to be protected.

@@ -27,9 +27,31 @@ interface MockDelegate {
 /**
  * Stands in for the CLS transaction host. Outside a transaction the real one
  * hands back the base client, which is exactly what a unit test wants.
+ *
+ * `withoutTransaction` is tracked rather than merely passed through: the host
+ * starts inside a transaction, as it is for every real caller of `consume`,
+ * and `outside()` reports whether a write ran after stepping out of it.
  */
-function transactionHost(delegate: MockDelegate): TransactionHost {
-  return { tx: { verificationToken: delegate } } as unknown as TransactionHost;
+function transactionHost(delegate: MockDelegate): {
+  host: TransactionHost;
+  outside: () => boolean;
+} {
+  let insideTransaction = true;
+
+  const host = {
+    tx: { verificationToken: delegate },
+    withoutTransaction: async <T>(write: () => Promise<T>): Promise<T> => {
+      insideTransaction = false;
+
+      try {
+        return await write();
+      } finally {
+        insideTransaction = true;
+      }
+    },
+  } as unknown as TransactionHost;
+
+  return { host, outside: () => !insideTransaction };
 }
 
 function buildToken(
@@ -57,11 +79,12 @@ describe('VerificationService', () => {
   let db: MockDelegate;
   let settings: jest.Mocked<Pick<AuthSettingsService, 'confirmationMethod'>>;
   let service: VerificationService;
+  let outsideTransaction: () => boolean;
 
   beforeEach(() => {
     db = {
       create: jest.fn().mockResolvedValue(buildToken()),
-      update: jest.fn().mockResolvedValue(buildToken()),
+      update: jest.fn().mockResolvedValue(buildToken({ attempts: 1 })),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findFirst: jest.fn().mockResolvedValue(null),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -69,8 +92,11 @@ describe('VerificationService', () => {
 
     settings = { confirmationMethod: jest.fn().mockReturnValue('otp') };
 
+    const { host, outside } = transactionHost(db);
+    outsideTransaction = outside;
+
     service = new VerificationService(
-      transactionHost(db),
+      host,
       settings as unknown as AuthSettingsService,
     );
   });
@@ -140,11 +166,44 @@ describe('VerificationService', () => {
       expect(db.update).toHaveBeenCalledWith({
         where: { id: token.id },
         data: { attempts: { increment: 1 } },
+        select: { attempts: true },
       });
+    });
+
+    /**
+     * Every caller is `@Transactional()` and answers a wrong code by throwing.
+     * Counted inside that transaction, the attempt was rolled back with the
+     * refusal and the cap could never be reached.
+     */
+    it('counts the attempt outside the caller’s transaction', async () => {
+      let countedOutside: boolean | undefined;
+      db.update.mockImplementation(() => {
+        countedOutside = outsideTransaction();
+
+        return Promise.resolve(buildToken({ attempts: 1 }));
+      });
+
+      await expect(service.consume(buildToken(), '000000')).rejects.toThrow(
+        AppError,
+      );
+      expect(countedOutside).toBe(true);
     });
 
     it('reports attempts exceeded on the attempt that reaches the cap', async () => {
       const token = buildToken({ attempts: MAX_ATTEMPTS - 1 });
+      db.update.mockResolvedValue(buildToken({ attempts: MAX_ATTEMPTS }));
+
+      await expect(service.consume(token, '000000')).rejects.toThrow(
+        expect.objectContaining({
+          code: ERROR_CODES.CONFIRMATION_ATTEMPTS_EXCEEDED,
+        }),
+      );
+    });
+
+    /** Concurrent guesses read the same count; the increment tells them apart. */
+    it('decides by the count the increment returned, not the one it read', async () => {
+      const token = buildToken({ attempts: 0 });
+      db.update.mockResolvedValue(buildToken({ attempts: MAX_ATTEMPTS }));
 
       await expect(service.consume(token, '000000')).rejects.toThrow(
         expect.objectContaining({
@@ -168,6 +227,28 @@ describe('VerificationService', () => {
 
       await expect(service.consume(token, '123456')).rejects.toThrow(
         expect.objectContaining({ code: ERROR_CODES.CONFIRMATION_EXPIRED }),
+      );
+    });
+
+    /** Every refusal is a failed confirmation, not only a wrong code. */
+    it.each([
+      ['expired', { expiresAt: new Date(Date.now() - 1) }, '123456'],
+      ['attempts_exceeded', { attempts: MAX_ATTEMPTS }, '123456'],
+      ['used', { usedAt: new Date() }, '123456'],
+      ['invalid', {}, '000000'],
+    ] as const)('logs a %s refusal', async (reason, overrides, submitted) => {
+      const warn = jest.spyOn(service['logger'], 'warn');
+
+      await expect(
+        service.consume(buildToken(overrides), submitted),
+      ).rejects.toThrow(AppError);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'auth.verification.failed',
+          userId: 'user-1',
+          type: 'email_verification',
+          reason,
+        }),
       );
     });
 
@@ -247,6 +328,26 @@ describe('VerificationService', () => {
         where: { id: token.id },
         data: expect.objectContaining({ attempts: 0, usedAt: null }),
       });
+    });
+
+    it('moves an email-change challenge onto a new address when given one', async () => {
+      await service.rotate(
+        buildToken({ type: VERIFICATION_TOKEN_TYPES.EMAIL_CHANGE }),
+        'second@example.com',
+      );
+
+      expect(db.update).toHaveBeenCalledWith({
+        where: { id: 'token-1' },
+        data: expect.objectContaining({ newEmail: 'second@example.com' }),
+      });
+    });
+
+    it('leaves the address alone when not given one', async () => {
+      await service.rotate(buildToken());
+
+      expect(
+        (db.update.mock.calls[0][0] as { data: object }).data,
+      ).not.toHaveProperty('newEmail');
     });
 
     it('will not rotate while the resend interval is still open', async () => {

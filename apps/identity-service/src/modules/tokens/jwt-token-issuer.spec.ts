@@ -138,6 +138,21 @@ describe('JwtTokenIssuer', () => {
       );
     });
 
+    /**
+     * Right secret, right claims, another algorithm: the verifier decides how
+     * a token is checked, not the token's own header.
+     */
+    it('refuses a token signed with an algorithm it does not issue', async () => {
+      const otherAlgorithm = jwt.sign(
+        { sub: 'user-1', jti: 'x', typ: 'refresh' },
+        { secret: REFRESH_SECRET, algorithm: 'HS512' },
+      );
+
+      await expect(service.verifyRefresh(otherAlgorithm)).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.UNAUTHENTICATED }),
+      );
+    });
+
     it('refuses an expired token', async () => {
       const expired = jwt.sign(
         { sub: 'user-1', jti: 'x', typ: 'refresh' },

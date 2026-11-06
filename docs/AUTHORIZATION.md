@@ -172,9 +172,13 @@ record, so it is out of scope until §1 changes.
 
 | Event | Level | Notes |
 |---|---|---|
-| `auth.token.rejected` | warn | reason: `expired` / `invalid` |
-| `auth.refresh.rejected` | warn | reason: `expired` / `invalid` / `wrong_type` / `unknown_subject` / `email_not_verified` |
+| `auth.token.rejected` | warn | reason: `expired` / `invalid` / `no_subject`, or `missing` with the route when a protected request carried no credential at all |
+| `auth.refresh.rejected` | warn | reason: `expired` / `invalid` / `wrong_type` / `unknown_subject` / `account_deleted` / `email_not_verified` |
 | `auth.refresh.succeeded` | info | with the roles the new token was signed with |
+| request completed (pino-http) | info | every request, with method, route, status and `correlationId` — and `userId` once the authentication guard has resolved the caller, so access to protected routes is attributable |
+
+Both tokens are verified with the algorithm pinned to `HS256` — the gateway for the access token,
+identity for the refresh token — so a token's own header never chooses how it is checked.
 
 Never the token itself. A refresh token in a log aggregator is a credential good for
 the next thirty days sitting in a system designed for wide read access — the pino

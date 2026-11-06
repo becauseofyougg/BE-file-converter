@@ -15,6 +15,8 @@ jest.mock('@nestjs-cls/transactional', () => ({
   TransactionHost: class {},
 }));
 
+import { Prisma } from '@prisma-clients/identity';
+
 import { ERROR_CODES } from '@contracts/errors/error-codes';
 import { DOMAIN_EVENTS } from '@contracts/events/domain.events';
 import { AppError } from '@core/errors/app-error';
@@ -271,6 +273,61 @@ describe('ProfileUpdateService', () => {
       await patchOther({ displayName: 'x' });
 
       expect(outbox.publish).not.toHaveBeenCalled();
+    });
+
+    /** Two writes racing past the pre-check; the unique index catches one. */
+    it('answers 409, not 500, when the address was taken meanwhile', async () => {
+      rbac.check.mockResolvedValue({ allowed: true });
+      users.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(patchOther({ email: 'raced@example.com' })).rejects.toThrow(
+        expect.objectContaining({ code: ERROR_CODES.EMAIL_IN_USE }),
+      );
+      expect(outbox.publish).not.toHaveBeenCalled();
+    });
+  });
+
+  /** §1.5: the result of every write, refusals included — names, never values. */
+  describe('audit of refusals', () => {
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest
+        .spyOn(service['logger'], 'warn')
+        .mockImplementation(() => undefined);
+    });
+
+    it('logs a field this caller may not write, by name', async () => {
+      users.findById.mockResolvedValue(buildUser({ id: VIEWER }));
+
+      await expect(patchSelf({ email: 'mine@example.com' })).rejects.toThrow(
+        AppError,
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'users.profile.updated',
+          outcome: 'field_not_writable',
+          refusedFields: ['email'],
+        }),
+      );
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('mine@example.com');
+    });
+
+    it('logs an address already held by another account', async () => {
+      rbac.check.mockResolvedValue({ allowed: true });
+      users.isEmailTaken.mockResolvedValue(true);
+
+      await expect(patchOther({ email: 'taken@example.com' })).rejects.toThrow(
+        AppError,
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: 'email_in_use', fields: ['email'] }),
+      );
     });
   });
 

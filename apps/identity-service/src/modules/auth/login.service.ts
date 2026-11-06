@@ -155,6 +155,15 @@ export class LoginService {
     // The type check matters: without it an email-verification code would
     // complete a login, turning a weaker challenge into a session.
     if (!token || token.type !== VERIFICATION_TOKEN_TYPES.LOGIN_CONFIRMATION) {
+      // Same event `consume` logs its own refusals under, so one query finds
+      // every failed confirmation whatever stopped it.
+      this.logger.warn({
+        event: 'auth.verification.failed',
+        type: VERIFICATION_TOKEN_TYPES.LOGIN_CONFIRMATION,
+        reason: token ? 'wrong_type' : 'unknown_challenge',
+        userId: token?.userId,
+      });
+
       throw new AppError(
         ERROR_CODES.CONFIRMATION_INVALID,
         'Confirmation is invalid',
@@ -177,6 +186,13 @@ export class LoginService {
     const user = await this.users.findById(token.userId);
 
     if (!user) {
+      this.logger.warn({
+        event: 'auth.verification.failed',
+        type: VERIFICATION_TOKEN_TYPES.LOGIN_CONFIRMATION,
+        reason: 'account_removed',
+        userId: token.userId,
+      });
+
       throw new AppError(
         ERROR_CODES.CONFIRMATION_INVALID,
         'Confirmation is invalid',
@@ -325,7 +341,10 @@ export class LoginService {
    * succeeds is never slowed down at all.
    */
   private async registerFailure(user: SafeUser): Promise<void> {
-    const attempts = user.failedLoginAttempts + 1;
+    // The count the increment returns, not `user.failedLoginAttempts + 1`:
+    // that is the value this request read at its start, and concurrent wrong
+    // passwords all read the same one and all decide to stay under the cap.
+    const attempts = await this.users.recordLoginFailure(user.id);
 
     if (attempts >= this.settings.maxFailedLoginAttempts()) {
       await this.users.lockLogin(
@@ -338,11 +357,7 @@ export class LoginService {
         userId: user.id,
         attempts,
       });
-
-      return;
     }
-
-    await this.users.recordLoginFailure(user.id);
   }
 
   private logFailure(reason: string, userId?: string): void {

@@ -45,9 +45,9 @@ export class RbacEventsController {
       await this.cache.reload('event', envelope.payload?.version);
     } catch {
       // Swallowed on purpose. A failed reload leaves the previous config in
-      // place and is already logged as an error by the cache; requeueing would
-      // spin against an identity that is down, and the boot-time load plus the
-      // next change both recover it.
+      // place, is already logged as an error by the cache, and has scheduled
+      // its own backed-off retry; requeueing would only spin against an
+      // identity that is down.
     } finally {
       channel.ack(message);
     }

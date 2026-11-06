@@ -16,7 +16,10 @@ import {
   type DeleteUserResponse,
 } from '@contracts/messages/users.messages';
 import { AppError } from '@core/errors/app-error';
-import { VerificationService } from '../auth/verification.service';
+import {
+  VerificationService,
+  type VerificationToken,
+} from '../auth/verification.service';
 import { OutboxService } from '../outbox/outbox.service';
 import { RbacConfigService } from '../rbac/rbac-config.service';
 import { UsersService, isDeleted, type SafeUser } from './users.service';
@@ -52,7 +55,9 @@ export class AccountDeletionService {
     // After the permission check and before anything is revealed, exactly as
     // the read and update paths order it: a refusal must not depend on whether
     // the id exists.
-    const user = await this.loadLiveUser(input.targetUserId);
+    const user = await this.loadLiveUser(input.targetUserId, () =>
+      this.audit(input, 'not_found', isSelf ? 'self' : 'admin'),
+    );
 
     if (!isSelf) {
       await this.erase(user, input.viewerUserId, input.correlationId);
@@ -78,15 +83,20 @@ export class AccountDeletionService {
         ? await this.verification.findLiveByChallengeId(input.challengeId)
         : null;
 
-    // The type check is the same one the other flows make, and matters most
-    // here: without it a login code would erase an account.
-    if (
-      !token ||
-      token.type !== VERIFICATION_TOKEN_TYPES.ACCOUNT_DELETION ||
-      token.userId !== input.targetUserId ||
-      // Self only, and the session has to belong to the account being erased.
-      token.userId !== input.viewerUserId
-    ) {
+    const refusal = challengeRefusal(token, input);
+
+    if (!token || refusal) {
+      // Under the event `consume` logs its own refusals with, so one query
+      // finds every failed confirmation whatever stopped it.
+      this.logger.warn({
+        event: 'auth.verification.failed',
+        type: VERIFICATION_TOKEN_TYPES.ACCOUNT_DELETION,
+        reason: refusal,
+        userId: token?.userId,
+        targetUserId: input.targetUserId,
+        viewerUserId: input.viewerUserId,
+      });
+
       throw new AppError(
         ERROR_CODES.CONFIRMATION_INVALID,
         'Confirmation is invalid',
@@ -106,7 +116,17 @@ export class AccountDeletionService {
 
     await this.verification.consume(token, submitted);
 
-    const user = await this.loadLiveUser(token.userId);
+    // Erased by an administrator after the code was mailed: erasure spends live
+    // challenges, so this is the belt to that pair of braces.
+    const user = await this.loadLiveUser(token.userId, () =>
+      this.logger.warn({
+        event: 'users.deletion.failed',
+        actorUserId: input.viewerUserId,
+        targetUserId: token.userId,
+        mode: 'self',
+        reason: 'account_removed',
+      }),
+    );
 
     await this.erase(user, undefined, input.correlationId);
 
@@ -210,10 +230,17 @@ export class AccountDeletionService {
    * repeated call safe (§1.6): the second one changes nothing and answers the
    * same `404` every other route gives for a user that does not exist.
    */
-  private async loadLiveUser(userId: string): Promise<SafeUser> {
+  private async loadLiveUser(
+    userId: string,
+    // Each caller logs the miss in its own terms — a refused request, or a
+    // confirmation that found nothing left to erase.
+    onMissing: () => void,
+  ): Promise<SafeUser> {
     const user = await this.users.findById(userId);
 
     if (!user || isDeleted(user)) {
+      onMissing();
+
       throw new AppError(ERROR_CODES.USER_NOT_FOUND, 'User not found', 404);
     }
 
@@ -227,7 +254,7 @@ export class AccountDeletionService {
    */
   private audit(
     input: DeleteUserRequest,
-    outcome: 'deleted' | 'confirmation_required' | 'forbidden',
+    outcome: 'deleted' | 'confirmation_required' | 'forbidden' | 'not_found',
     mode: 'self' | 'admin',
     method?: string,
     reason?: string,
@@ -244,10 +271,42 @@ export class AccountDeletionService {
       statedReason: input.reason,
     };
 
-    if (outcome === 'forbidden') {
+    if (outcome === 'forbidden' || outcome === 'not_found') {
       this.logger.warn(entry);
     } else {
       this.logger.log(entry);
     }
   }
+}
+
+/** Why a challenge cannot confirm this erasure, or `null` when it can. */
+function challengeRefusal(
+  token: VerificationToken | null,
+  input: ConfirmDeletionRequest,
+):
+  | 'unknown_challenge'
+  | 'wrong_type'
+  | 'wrong_owner'
+  | 'not_session_owner'
+  | null {
+  if (!token) {
+    return 'unknown_challenge';
+  }
+
+  // The type check is the same one the other flows make, and matters most
+  // here: without it a login code would erase an account.
+  if (token.type !== VERIFICATION_TOKEN_TYPES.ACCOUNT_DELETION) {
+    return 'wrong_type';
+  }
+
+  if (token.userId !== input.targetUserId) {
+    return 'wrong_owner';
+  }
+
+  // Self only, and the session has to belong to the account being erased.
+  if (token.userId !== input.viewerUserId) {
+    return 'not_session_owner';
+  }
+
+  return null;
 }

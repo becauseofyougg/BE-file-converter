@@ -18,6 +18,7 @@ import {
   type VerifyEmailResponse,
 } from '@contracts/messages/identity.messages';
 import { AppError } from '@core/errors/app-error';
+import { isUniqueViolation } from '../../database/prisma-errors';
 import { OutboxService } from '../outbox/outbox.service';
 import { UserRolesService } from '../rbac/user-roles.service';
 import { TOKEN_ISSUER, type TokenIssuer } from '../tokens/token-issuer';
@@ -80,15 +81,43 @@ export class AuthService {
    * including the ones that create nothing. Short-circuiting on a duplicate
    * would make the response measurably faster for addresses that exist, and a
    * timing oracle defeats the neutral wording everywhere else in this method.
+   * It is hashed outside the transaction, too: ~100 ms of argon2 has no
+   * business holding a pooled connection open.
    */
-  @Transactional()
   async register(input: RegisterInput): Promise<RegisterResponse> {
     const email = normalizeEmail(input.email);
-    const confirmationRequired = this.settings.confirmRegistration();
 
-    this.policy.assertMeetsPolicy(input.password);
+    this.logger.log({ event: 'auth.register.attempt' });
+    this.assertPasswordPolicy(input.password);
 
     const passwordHash = await this.passwords.hash(input.password);
+
+    try {
+      return await this.createAccount(email, passwordHash, input);
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+
+      // Two requests for one address both passed the existence check and the
+      // unique index stopped the second insert — docs/REGISTRATION.md §8. The
+      // winner has committed by the time Postgres reports the violation, so a
+      // second pass finds its row and answers exactly as a sequential
+      // duplicate would, instead of the 500 the raw error becomes. It has to
+      // be a fresh transaction: the failed insert aborted the first one.
+      this.logger.warn({ event: 'auth.register.concurrent_duplicate' });
+
+      return this.createAccount(email, passwordHash, input);
+    }
+  }
+
+  @Transactional()
+  private async createAccount(
+    email: string,
+    passwordHash: string,
+    input: RegisterInput,
+  ): Promise<RegisterResponse> {
+    const confirmationRequired = this.settings.confirmRegistration();
     const existing = await this.users.findByEmail(email);
 
     if (existing) {
@@ -154,6 +183,13 @@ export class AuthService {
     const token = await this.locateChallenge(input);
 
     if (!token) {
+      // No userId to attach — that is the point: the handle or link matched
+      // nothing, which is what a guess looks like.
+      this.logger.warn({
+        event: 'auth.verification.failed',
+        reason: 'unknown_challenge',
+      });
+
       throw new AppError(
         ERROR_CODES.CONFIRMATION_INVALID,
         'Confirmation is invalid',
@@ -177,6 +213,12 @@ export class AuthService {
 
     if (!user) {
       // The cleanup job removed the account between issuing and confirming.
+      this.logger.warn({
+        event: 'auth.verification.failed',
+        userId: token.userId,
+        reason: 'account_removed',
+      });
+
       throw new AppError(
         ERROR_CODES.CONFIRMATION_INVALID,
         'Confirmation is invalid',
@@ -237,6 +279,16 @@ export class AuthService {
       return { status: 'accepted' };
     }
 
+    // Asked by email, the cooldown refusal would itself be the answer to "does
+    // this address have a pending account?" — an unknown address never hits
+    // it, so two calls in a row would tell the two apart. Only a caller quoting
+    // the challenge handle, and so already holding the proof, is told to wait.
+    if (!input.challengeId) {
+      await this.resendQuietly(token, user, input.correlationId);
+
+      return { status: 'accepted' };
+    }
+
     const challenge = await this.verification.rotate(token);
 
     await this.announce(
@@ -246,13 +298,21 @@ export class AuthService {
       input.correlationId,
     );
 
-    this.logger.log({
-      event: 'auth.verification.resent',
-      userId: user.id,
-      method: challenge.method,
-    });
-
     return { status: 'accepted' };
+  }
+
+  /** The policy refusal is the one registration failure not logged elsewhere. */
+  private assertPasswordPolicy(password: string): void {
+    try {
+      this.policy.assertMeetsPolicy(password);
+    } catch (error) {
+      this.logger.warn({
+        event: 'auth.register.rejected',
+        reason: error instanceof AppError ? error.code : 'unknown',
+      });
+
+      throw error;
+    }
   }
 
   /**
@@ -326,10 +386,11 @@ export class AuthService {
   }
 
   /**
-   * A resend triggered by re-registration rather than by the resend endpoint.
-   * Hitting the 60-second limit must not surface as an error here — that would
-   * turn the refusal itself into proof the address exists — so the existing
-   * challenge is handed back unchanged and no second mail goes out.
+   * A resend asked for by email — re-registration, or the resend endpoint
+   * given an address rather than a challenge handle. Hitting the resend limits
+   * must not surface as an error here — that would turn the refusal itself
+   * into proof the address exists — so the existing challenge is handed back
+   * unchanged and no second mail goes out.
    */
   private async resendQuietly(
     live: VerificationToken,
@@ -339,6 +400,11 @@ export class AuthService {
     try {
       this.verification.assertResendAllowed(live);
     } catch {
+      this.logger.log({
+        event: 'auth.verification.resend_suppressed',
+        userId: user.id,
+      });
+
       return {
         challengeId: live.challengeId,
         secret: '',
@@ -383,8 +449,11 @@ export class AuthService {
    * is the only service allowed to talk to an SMTP server — and it is written
    * to the outbox in the same transaction as the challenge, so a rolled-back
    * registration cannot produce a mail about a user who does not exist.
+   *
+   * Every path that mails a code or link comes through here, so this is where
+   * the send is logged — the method, never the secret.
    */
-  private announce(
+  private async announce(
     user: SafeUser,
     challenge: IssuedChallenge,
     eventName:
@@ -392,7 +461,7 @@ export class AuthService {
       | typeof DOMAIN_EVENTS.USER_VERIFICATION_RESENT,
     correlationId: string,
   ): Promise<void> {
-    return this.outbox.publish<UserRegisteredPayload>(
+    await this.outbox.publish<UserRegisteredPayload>(
       eventName,
       {
         userId: user.id,
@@ -405,6 +474,15 @@ export class AuthService {
       },
       correlationId,
     );
+
+    this.logger.log({
+      event:
+        eventName === DOMAIN_EVENTS.USER_REGISTERED
+          ? 'auth.verification.sent'
+          : 'auth.verification.resent',
+      userId: user.id,
+      method: challenge.method,
+    });
   }
 
   private locateChallenge(

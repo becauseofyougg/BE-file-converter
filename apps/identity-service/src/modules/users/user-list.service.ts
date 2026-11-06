@@ -16,7 +16,13 @@ import {
 } from '@contracts/messages/users.messages';
 import { AppError } from '@core/errors/app-error';
 import { RbacConfigService } from '../rbac/rbac-config.service';
-import { encodeCursor, decodeCursor } from './user-list.cursor';
+import {
+  UUID_PATTERN,
+  decodeCursor,
+  encodeCursor,
+  staleCursor,
+  type UserListCursor,
+} from './user-list.cursor';
 import { UsersService, type ListUser } from './users.service';
 
 /**
@@ -46,9 +52,17 @@ export class UserListService {
     const order = input.order ?? 'desc';
     const limit = clampLimit(input.limit);
 
-    const cursor = input.cursor
-      ? decodeCursor(input.cursor, { sort, order })
-      : null;
+    let cursor: UserListCursor | null = null;
+
+    try {
+      cursor = input.cursor
+        ? decodeCursor(input.cursor, { sort, order })
+        : null;
+    } catch (error) {
+      this.rejected(input, error);
+
+      throw error;
+    }
 
     // One row more than asked for. Its presence is the answer to "is there
     // another page", which a count query would also answer — at the cost of a
@@ -59,6 +73,21 @@ export class UserListService {
       take: limit + 1,
       cursorId: cursor?.id,
     });
+
+    // A cursor whose row is gone makes the query return nothing at all, which
+    // would go out as an empty last page. Only an empty page can be this case,
+    // so only an empty page pays the primary-key lookup that tells the two
+    // apart. An erased account is still a row, and still a valid position.
+    if (
+      cursor &&
+      rows.length === 0 &&
+      !(await this.users.findById(cursor.id))
+    ) {
+      const error = staleCursor();
+      this.rejected(input, error);
+
+      throw error;
+    }
 
     const page = rows.slice(0, limit);
     const hasMore = rows.length > limit;
@@ -82,6 +111,30 @@ export class UserListService {
       nextCursor:
         hasMore && last ? encodeCursor({ id: last.id, sort, order }) : null,
     };
+  }
+
+  /**
+   * A refused request is a result too (§1.5). The same fields as a served one,
+   * and likewise never `q`. Refusals the gateway makes itself — a `limit` out
+   * of range, an unknown `sort` — never reach here; its request log records
+   * those with the caller attached.
+   */
+  private rejected(input: ListUsersRequest, error: unknown): void {
+    const reason =
+      error instanceof AppError
+        ? ((error.details as { reason?: string } | undefined)?.reason ??
+          error.code)
+        : 'unknown';
+
+    this.logger.warn({
+      event: 'users.list.rejected',
+      actorUserId: input.viewerUserId,
+      reason,
+      status: input.status,
+      searched: input.q !== undefined,
+      sort: input.sort,
+      order: input.order,
+    });
   }
 
   private async assertMayList(input: ListUsersRequest): Promise<void> {
@@ -159,6 +212,8 @@ function buildWhere(q?: string, status?: UserStatus): Prisma.UserWhereInput {
       // citext, so this is already case-insensitive and uses the unique index.
       { email: term },
       { displayName: { contains: term, mode: 'insensitive' } },
+      // Only when the term could be an id: anything else is a driver error
+      // against the `uuid` column.
       ...(UUID_PATTERN.test(term) ? [{ id: term }] : []),
     ];
   }
@@ -230,6 +285,3 @@ function clampLimit(limit?: number): number {
     USER_LIST_LIMITS.MAX,
   );
 }
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-9a-f][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

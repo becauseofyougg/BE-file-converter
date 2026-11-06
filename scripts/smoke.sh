@@ -321,10 +321,38 @@ echo "== hardening"
 LONG_ID=$(printf 'a%.0s' $(seq 1 100))
 check "an over-long x-correlation-id is not a 5xx" yes "$(s=$(curl -s -m 15 -o /dev/null -w '%{http_code}' -H "x-correlation-id: $LONG_ID" -H 'content-type: application/json' --data '{"email":"probe@example.com","password":"a perfectly fine passphrase"}' "$GW/auth/login"); [ "$s" -lt 500 ] && echo yes || echo "no ($s)")"
 check "  identity still answers the next request" yes "$(s=$(curl -s -m 15 -o /dev/null -w '%{http_code}' -H 'content-type: application/json' --data '{"email":"probe2@example.com","password":"a perfectly fine passphrase"}' "$GW/auth/login"); [ "$s" -lt 500 ] && echo yes || echo "no ($s)")"
-check "  nothing left unacknowledged on identity.rpc" 0 "$(docker exec "$MQ" rabbitmqctl list_queues name messages_unacknowledged 2> /dev/null | awk '$1 == "identity.rpc" {print $2}')"
+check "  nothing left unacknowledged on identity.rpc" 0 "$(docker exec fc-rabbitmq rabbitmqctl list_queues name messages_unacknowledged 2> /dev/null | awk '$1 == "identity.rpc" {print $2}')"
+# The gateway's per-email limit, on an address with no account behind it. The
+# account lockout in identity is a separate defence, checked in the next section.
 BRUTE="brute-$(date +%s)@example.com"
 ATTEMPTS=$(for i in $(seq 1 6); do curl -s -o /dev/null -w '%{http_code} ' -H 'content-type: application/json' --data "{\"email\":\"$BRUTE\",\"password\":\"wrong guess number $i\"}" "$GW/auth/login"; done)
 check "the sixth wrong password on one address is throttled" 429 "$(echo "$ATTEMPTS" | awk '{print $6}')"
+
+echo "== guess counters survive the refusal they record"
+# Both caps are counted inside @Transactional() methods that throw on a wrong
+# guess. They used to be counted inside that transaction too, so the refusal
+# rolled the count back: six wrong codes in a row were all "invalid", and no
+# account ever locked. The database is checked, not only the status codes —
+# the gateway's per-email limit answers 429 as well, and would hide a counter
+# that never moves. Sized to stay inside the per-IP limits on both routes:
+# verify-email is called 9 times in this script, login 10.
+LOCKED="lockout-$(date +%s)@example.com"
+rm -f "$JAR"
+req POST /auth/register "{\"email\":\"$LOCKED\",\"password\":\"$PASSWORD\"}" > /dev/null
+CHALLENGE=$(field b.challengeId)
+CODE=$(mail_code "$LOCKED")
+WRONG=$([ "$CODE" = 000000 ] && echo 111111 || echo 000000)
+for _ in $(seq 1 5); do req POST /auth/verify-email "{\"challengeId\":\"$CHALLENGE\",\"code\":\"$WRONG\"}" > /dev/null; done
+check "the fifth wrong code exhausts the challenge" CONFIRMATION_ATTEMPTS_EXCEEDED "$(field b.code)"
+check "  every guess was counted" 5 "$(sql identity "SELECT attempts FROM verification_tokens WHERE challenge_id = '$CHALLENGE'")"
+check "  the right code is refused now too" 429 "$(req POST /auth/verify-email "{\"challengeId\":\"$CHALLENGE\",\"code\":\"$CODE\"}")"
+# One short of the default cap (LOGIN_MAX_FAILED_ATTEMPTS=5), so a single wrong
+# password reaches it without first running into the gateway's per-email limit.
+sql identity "UPDATE users SET failed_login_attempts = 4 WHERE email = '$LOCKED'" > /dev/null
+check "a wrong password that reaches the cap" 401 "$(req POST /auth/login "{\"email\":\"$LOCKED\",\"password\":\"not the password\"}")"
+check "  the failure was counted" 5 "$(sql identity "SELECT failed_login_attempts FROM users WHERE email = '$LOCKED'")"
+check "  and the account locked" t "$(sql identity "SELECT locked_until > now() FROM users WHERE email = '$LOCKED'")"
+check "  the right password is refused while locked" ACCOUNT_LOCKED "$(req POST /auth/login "{\"email\":\"$LOCKED\",\"password\":\"$PASSWORD\"}" > /dev/null; field b.code)"
 
 echo "== docs"
 check "GET /docs (Swagger UI)" 200 "$(curl -s -o /dev/null -w '%{http_code}' "$GW/docs")"

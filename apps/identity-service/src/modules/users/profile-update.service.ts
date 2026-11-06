@@ -16,6 +16,7 @@ import {
   type UserProfileRecord,
 } from '@contracts/messages/users.messages';
 import { AppError } from '@core/errors/app-error';
+import { orConflict } from '../../database/prisma-errors';
 import { OutboxService } from '../outbox/outbox.service';
 import { RbacConfigService } from '../rbac/rbac-config.service';
 import { ProfileService } from './profile.service';
@@ -54,7 +55,7 @@ export class ProfileUpdateService {
 
     // Before the lookup, exactly as the read path does it: a refusal must not
     // depend on whether the id exists, or it becomes a way to discover that.
-    this.assertWritable(input.patch, audience);
+    this.assertWritable(input, audience);
 
     const user = await this.users.findById(input.targetUserId);
 
@@ -64,14 +65,26 @@ export class ProfileUpdateService {
       throw new AppError(ERROR_CODES.USER_NOT_FOUND, 'User not found', 404);
     }
 
-    if (input.patch.email !== undefined) {
-      await this.assertEmailFree(input.patch.email, user.id);
+    if (
+      input.patch.email !== undefined &&
+      (await this.users.isEmailTaken(input.patch.email, user.id))
+    ) {
+      this.audit(input, 'email_in_use', audience);
+
+      throw emailInUse();
     }
 
     const previousEmail = user.email;
-    const updated = await this.users.update(
-      user.id,
-      normalizePatch(input.patch),
+    // The check above handles the ordinary case; the citext unique index
+    // catches two writes racing past it together, which would otherwise
+    // surface as a 500.
+    const updated = await orConflict(
+      this.users.update(user.id, normalizePatch(input.patch)),
+      () => {
+        this.audit(input, 'email_in_use', audience);
+
+        return emailInUse();
+      },
     );
 
     if (input.patch.email !== undefined && updated.email !== previousEmail) {
@@ -126,15 +139,20 @@ export class ProfileUpdateService {
    * Self hitting `email` is the case the requirement singles out, and it gets
    * its own message: the change is possible, just not through this route.
    */
-  private assertWritable(patch: UserPatch, audience: ProfileAudience): void {
+  private assertWritable(
+    input: UpdateUserProfileRequest,
+    audience: ProfileAudience,
+  ): void {
     const allowed = PROFILE_PATCH_POLICY[audience];
-    const refused = sentFields(patch).filter(
+    const refused = sentFields(input.patch).filter(
       (field) => !allowed.includes(field as keyof UserPatch),
     );
 
     if (refused.length === 0) {
       return;
     }
+
+    this.audit(input, 'field_not_writable', audience, undefined, refused);
 
     const selfEmail =
       audience === PROFILE_AUDIENCES.SELF && refused.includes('email');
@@ -150,37 +168,29 @@ export class ProfileUpdateService {
   }
 
   /**
-   * Checked before the write as well as relied on afterwards. The citext unique
-   * index is the real guarantee under concurrency — this exists so the ordinary
-   * case gets `EMAIL_IN_USE` rather than a constraint violation surfacing as a
-   * 500.
-   */
-  private async assertEmailFree(email: string, userId: string): Promise<void> {
-    if (await this.users.isEmailTaken(email, userId)) {
-      throw new AppError(
-        ERROR_CODES.EMAIL_IN_USE,
-        'That email address is already in use',
-        409,
-      );
-    }
-  }
-
-  /**
-   * §1.5: field **names** only. The values are the thing being protected, and
-   * an audit log that copies them doubles the number of places they have to be
+   * §1.5: field **names** only, and every outcome — a refusal is as much a
+   * result as a success. The values are the thing being protected, and an
+   * audit log that copies them doubles the number of places they have to be
    * protected in.
    */
   private audit(
     input: UpdateUserProfileRequest,
-    outcome: 'ok' | 'forbidden' | 'not_found',
+    outcome:
+      | 'ok'
+      | 'forbidden'
+      | 'not_found'
+      | 'field_not_writable'
+      | 'email_in_use',
     audience: ProfileAudience,
     reason?: string,
+    refusedFields?: string[],
   ): void {
     const entry = {
       event: 'users.profile.updated',
       actorUserId: input.viewerUserId,
       targetUserId: input.targetUserId,
       fields: sentFields(input.patch),
+      refusedFields,
       audience,
       outcome,
       reason,
@@ -214,6 +224,14 @@ export function sentFields(patch: UserPatch): string[] {
   return Object.entries(patch)
     .filter(([, value]) => value !== undefined)
     .map(([field]) => field);
+}
+
+function emailInUse(): AppError {
+  return new AppError(
+    ERROR_CODES.EMAIL_IN_USE,
+    'That email address is already in use',
+    409,
+  );
 }
 
 function normalizePatch(patch: UserPatch): UserPatch {

@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 
 import {
@@ -10,6 +16,10 @@ import { IDENTITY_CLIENT } from '../../messaging/messaging.module';
 import { sendRpc } from '../../messaging/rpc';
 
 const RELOAD_TIMEOUT_MS = 5_000;
+
+/** Doubling from one second, capped at thirty — see `scheduleRetry`. */
+export const RETRY_BASE_MS = 1_000;
+export const RETRY_MAX_MS = 30_000;
 
 /**
  * The gateway's copy of the RBAC config.
@@ -24,10 +34,12 @@ const RELOAD_TIMEOUT_MS = 5_000;
  * `/health` route is public so the failure is visible rather than silent.
  */
 @Injectable()
-export class RbacConfigCache implements OnModuleInit {
+export class RbacConfigCache implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RbacConfigCache.name);
   private config: RbacConfig = emptyRbacConfig();
   private loading: Promise<void> | null = null;
+  private retryTimer: NodeJS.Timeout | null = null;
+  private retryAttempt = 0;
 
   constructor(
     @Inject(IDENTITY_CLIENT) private readonly identity: ClientProxy,
@@ -35,9 +47,13 @@ export class RbacConfigCache implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     // A failure here must not stop the gateway booting: identity may simply be
-    // slower to start. The config stays empty — denying — and the next
-    // `rbac.updated`, or the retry below, fills it in.
+    // slower to start. The config stays empty — denying — and the retry
+    // scheduled by the failed fetch fills it in.
     await this.reload('boot').catch(() => undefined);
+  }
+
+  onModuleDestroy(): void {
+    this.cancelRetry();
   }
 
   current(): RbacConfig {
@@ -80,6 +96,8 @@ export class RbacConfigCache implements OnModuleInit {
 
       const previous = this.config.version;
       this.config = config;
+      this.retryAttempt = 0;
+      this.cancelRetry();
 
       this.logger.log({
         event: 'rbac.config.reloaded',
@@ -99,7 +117,54 @@ export class RbacConfigCache implements OnModuleInit {
         reason: error instanceof Error ? error.message : 'unknown',
       });
 
+      this.scheduleRetry();
+
       throw error;
+    }
+  }
+
+  /**
+   * Waiting for the next `rbac.updated` is not a recovery plan. An empty
+   * config denies `rbac@manage` too, so the admin change that would trigger
+   * the event is itself refused — without a retry, a gateway that booted
+   * before identity stayed locked out until restarted. A failed reload after a
+   * change is the milder case of the same thing: stale rules until the next
+   * change, whenever that is.
+   *
+   * At most one retry is pending; a fetch that succeeds in the meantime, by
+   * whatever trigger, cancels it.
+   */
+  private scheduleRetry(): void {
+    if (this.retryTimer) {
+      return;
+    }
+
+    const delayMs = Math.min(
+      RETRY_BASE_MS * 2 ** this.retryAttempt,
+      RETRY_MAX_MS,
+    );
+    this.retryAttempt += 1;
+
+    this.logger.warn({
+      event: 'rbac.config.retry_scheduled',
+      attempt: this.retryAttempt,
+      delayMs,
+    });
+
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      // A failure schedules the next attempt from inside `fetch`.
+      void this.reload('retry').catch(() => undefined);
+    }, delayMs);
+
+    // Never the reason the process stays up.
+    this.retryTimer.unref();
+  }
+
+  private cancelRetry(): void {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
     }
   }
 }
