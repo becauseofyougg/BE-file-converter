@@ -7,7 +7,20 @@ import {
   MaxLength,
 } from 'class-validator';
 
-import type { GetUserProfileRequest } from '@contracts/messages/users.messages';
+import type {
+  GetUserProfileRequest,
+  GetUserStatusRequest,
+} from '@contracts/messages/users.messages';
+
+export class GetUserStatusMessageDto implements GetUserStatusRequest {
+  @IsUUID()
+  userId: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  correlationId?: string;
+}
 
 /**
  * `viewerUserId` and `viewerRoles` come from the gateway's verified access

@@ -26,6 +26,10 @@ RUN npm run prisma:generate:conversion \
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Image conversions (sharp) run on libuv's thread pool, which the file system
+# and DNS share; at the default of 4, four images in flight would leave reading
+# an upload waiting behind them. Twice CONVERSION_RPC_CONCURRENCY.
+ENV UV_THREADPOOL_SIZE=8
 
 # The only image that carries converter binaries, and only the ones its family
 # needs — an `image` replica must not ship LibreOffice. Set at build time:
@@ -39,6 +43,11 @@ COPY --from=build /app/dist/apps/conversion-service ./dist
 COPY --from=build /app/package.json ./
 # The schema and its migration history, so `migrate deploy` can run below.
 COPY --from=build /app/apps/conversion-service/prisma ./apps/conversion-service/prisma
+
+# Where STORAGE_DRIVER=local keeps files — see api-gateway.Dockerfile, which
+# shares the volume.
+RUN mkdir -p /var/lib/file-converter/storage \
+    && chown -R node:node /var/lib/file-converter
 
 # Converter binaries parse hostile input — this is where an RCE would land, so
 # the process runs unprivileged and writes only to its per-job temp dir.

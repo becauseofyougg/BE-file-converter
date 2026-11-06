@@ -67,6 +67,8 @@ export class GrantsService {
           permissionId: input.permissionId,
         },
       },
+      // Whether it exists is all that is asked.
+      select: { id: true },
     });
 
     if (duplicate) {
@@ -122,6 +124,7 @@ export class GrantsService {
     if (roleId !== existing.roleId || permissionId !== existing.permissionId) {
       const clash = await this.db.grant.findUnique({
         where: { roleId_permissionId: { roleId, permissionId } },
+        select: { id: true },
       });
 
       if (clash && clash.id !== id) {

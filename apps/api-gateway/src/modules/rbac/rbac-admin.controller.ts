@@ -13,7 +13,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiCookieAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiCookieAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ClientProxy } from '@nestjs/microservices';
 import type { FastifyRequest } from 'fastify';
 
@@ -66,6 +71,11 @@ export class RbacAdminController {
     @Inject(IDENTITY_CLIENT) private readonly identity: ClientProxy,
   ) {}
 
+  @ApiOperation({
+    summary: 'The whole RBAC config',
+    description:
+      'Every permission with its actions, and every role with its grants, as the gateways enforce it. Needs `rbac@read`.',
+  })
   @Get('config')
   @Permissions('rbac@read')
   getConfig(@Req() request: FastifyRequest): Promise<RbacConfig> {
@@ -74,12 +84,21 @@ export class RbacAdminController {
 
   // --- roles ---------------------------------------------------------------
 
+  @ApiOperation({
+    summary: 'List roles',
+    description: 'Needs `rbac@read`.',
+  })
   @Get('roles')
   @Permissions('rbac@read')
   listRoles(@Req() request: FastifyRequest): Promise<RoleDto[]> {
     return this.call<RoleDto[]>(RBAC_PATTERNS.LIST_ROLES, {}, request);
   }
 
+  @ApiOperation({
+    summary: 'Create a role',
+    description:
+      'Needs `rbac@manage`. A role grants nothing until grants are added to it.',
+  })
   @Post('roles')
   createRole(
     @Body() dto: CreateRoleDto,
@@ -89,6 +108,11 @@ export class RbacAdminController {
     return this.call<RoleDto>(RBAC_PATTERNS.CREATE_ROLE, dto, request, user);
   }
 
+  @ApiOperation({
+    summary: 'Change a role',
+    description:
+      'Needs `rbac@manage`. A system role (USER, ADMIN) cannot be renamed.',
+  })
   @Put('roles/:id')
   updateRole(
     @Param('id', ParseUUIDPipe) id: string,
@@ -104,6 +128,11 @@ export class RbacAdminController {
     );
   }
 
+  @ApiOperation({
+    summary: 'Delete a role',
+    description:
+      'Needs `rbac@manage`. Refused while users hold it, and for system roles.',
+  })
   @Delete('roles/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteRole(
@@ -116,6 +145,10 @@ export class RbacAdminController {
 
   // --- permissions ---------------------------------------------------------
 
+  @ApiOperation({
+    summary: 'List permissions',
+    description: 'Needs `rbac@read`.',
+  })
   @Get('permissions')
   @Permissions('rbac@read')
   listPermissions(@Req() request: FastifyRequest): Promise<PermissionDto[]> {
@@ -126,6 +159,11 @@ export class RbacAdminController {
     );
   }
 
+  @ApiOperation({
+    summary: 'Create a permission',
+    description:
+      'Needs `rbac@manage`. A resource and the actions it has, as in `resource@action`.',
+  })
   @Post('permissions')
   createPermission(
     @Body() dto: CreatePermissionDto,
@@ -140,6 +178,11 @@ export class RbacAdminController {
     );
   }
 
+  @ApiOperation({
+    summary: 'Change a permission',
+    description:
+      'Needs `rbac@manage`. Removing an action also removes it from every grant that named it.',
+  })
   @Put('permissions/:id')
   updatePermission(
     @Param('id', ParseUUIDPipe) id: string,
@@ -155,6 +198,10 @@ export class RbacAdminController {
     );
   }
 
+  @ApiOperation({
+    summary: 'Delete a permission',
+    description: 'Needs `rbac@manage`. Refused while grants refer to it.',
+  })
   @Delete('permissions/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deletePermission(
@@ -167,12 +214,21 @@ export class RbacAdminController {
 
   // --- grants --------------------------------------------------------------
 
+  @ApiOperation({
+    summary: 'List grants',
+    description: 'Needs `rbac@read`.',
+  })
   @Get('grants')
   @Permissions('rbac@read')
   listGrants(@Req() request: FastifyRequest): Promise<GrantDto[]> {
     return this.call<GrantDto[]>(RBAC_PATTERNS.LIST_GRANTS, {}, request);
   }
 
+  @ApiOperation({
+    summary: 'Grant a permission to a role',
+    description:
+      'Needs `rbac@manage`. Empty `actions` means every action, including ones added later.',
+  })
   @Post('grants')
   createGrant(
     @Body() dto: CreateGrantDto,
@@ -182,6 +238,10 @@ export class RbacAdminController {
     return this.call<GrantDto>(RBAC_PATTERNS.CREATE_GRANT, dto, request, user);
   }
 
+  @ApiOperation({
+    summary: 'Change a grant',
+    description: 'Needs `rbac@manage`.',
+  })
   @Put('grants/:id')
   updateGrant(
     @Param('id', ParseUUIDPipe) id: string,
@@ -197,6 +257,10 @@ export class RbacAdminController {
     );
   }
 
+  @ApiOperation({
+    summary: 'Revoke a grant',
+    description: 'Needs `rbac@manage`.',
+  })
   @Delete('grants/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteGrant(
@@ -209,6 +273,10 @@ export class RbacAdminController {
 
   // --- user roles ----------------------------------------------------------
 
+  @ApiOperation({
+    summary: "A user's roles",
+    description: 'Needs `rbac@read`.',
+  })
   @Get('users/:userId/roles')
   @Permissions('rbac@read')
   getUserRoles(
@@ -227,6 +295,11 @@ export class RbacAdminController {
    * access token still carries the old set until it expires — see
    * docs/RBAC.md §1.3.1.
    */
+  @ApiOperation({
+    summary: "Replace a user's roles",
+    description:
+      "Needs `rbac@manage`. Takes effect at the user's next token refresh — their current access token keeps the old roles until it expires.",
+  })
   @Put('users/:userId/roles')
   assignUserRoles(
     @Param('userId', ParseUUIDPipe) userId: string,

@@ -58,6 +58,31 @@ describe('ProfileService', () => {
       correlationId: 'correlation-1',
     });
 
+  describe('getStatus', () => {
+    it('answers that a live account is active, and nothing about it', async () => {
+      users.findById.mockResolvedValue(buildUser({ id: TARGET }));
+
+      await expect(service.getStatus(TARGET)).resolves.toEqual({
+        userId: TARGET,
+        active: true,
+      });
+      // No authorisation of its own: the gateway decided who may ask.
+      expect(rbac.check).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['unknown', null],
+      ['erased', buildUser({ deletedAt: new Date() })],
+    ])('answers 404 for an %s account', async (_case, user) => {
+      users.findById.mockResolvedValue(user);
+
+      await expect(service.getStatus(TARGET)).rejects.toMatchObject({
+        code: ERROR_CODES.USER_NOT_FOUND,
+        httpStatus: 404,
+      });
+    });
+  });
+
   describe('self', () => {
     const readSelf = () =>
       service.getProfile({

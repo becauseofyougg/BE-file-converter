@@ -17,7 +17,26 @@ export const USERS_PATTERNS = {
   DELETE_USER: 'identity.users.delete',
   CONFIRM_DELETION: 'identity.users.confirm-deletion',
   LIST_USERS: 'identity.users.list',
+  /** Whether an account exists and is not erased — nothing more. */
+  GET_STATUS: 'identity.users.get-status',
 } as const;
+
+/**
+ * Asked by the gateway for another service's endpoint that needs to know a
+ * user is real before answering about them: the transformation history.
+ * Answers no question of authorisation — the gateway has decided that already
+ * — and returns nothing about the person: an erased or unknown id is `404
+ * USER_NOT_FOUND`, anything else is `{ active: true }`.
+ */
+export interface GetUserStatusRequest {
+  userId: string;
+  correlationId?: string;
+}
+
+export interface UserStatusRecord {
+  userId: string;
+  active: true;
+}
 
 export interface GetUserProfileRequest {
   /** Whose profile is being asked for. */

@@ -113,6 +113,47 @@ describe('api-gateway (e2e)', () => {
 
       expect(response.text).toContain('swagger-ui');
     });
+
+    /**
+     * "Up to date" checked rather than hoped for: every operation the app
+     * serves is in the document with a summary, a success response, and its
+     * error responses — a route added without its decorators fails here.
+     */
+    it('documents every operation: a summary, a success, and how it fails', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/docs/json')
+        .expect(200);
+      const paths = (
+        response.body as {
+          paths: Record<
+            string,
+            Record<
+              string,
+              { summary?: string; responses?: Record<string, unknown> }
+            >
+          >;
+        }
+      ).paths;
+
+      const gaps = Object.entries(paths).flatMap(([path, methods]) =>
+        Object.entries(methods).flatMap(([method, operation]) => {
+          const codes = Object.keys(operation.responses ?? {});
+          const problems = [
+            operation.summary ? null : 'no summary',
+            codes.some((code) => code.startsWith('2')) ? null : 'no 2xx',
+            codes.some((code) => /^[45]/.test(code))
+              ? null
+              : 'no error response',
+          ].filter(Boolean);
+
+          return problems.length > 0
+            ? [`${method.toUpperCase()} ${path}: ${problems.join(', ')}`]
+            : [];
+        }),
+      );
+
+      expect(gaps).toEqual([]);
+    });
   });
 
   /**

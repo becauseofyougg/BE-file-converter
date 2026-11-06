@@ -8,6 +8,7 @@ import {
   type GetUserProfileRequest,
   type ProfileAudience,
   type UserProfileRecord,
+  type UserStatusRecord,
 } from '@contracts/messages/users.messages';
 import { AppError } from '@core/errors/app-error';
 import { RbacConfigService } from '../rbac/rbac-config.service';
@@ -60,6 +61,22 @@ export class ProfileService {
     this.audit(input, 'ok', audience);
 
     return await this.projectFor(user, audience);
+  }
+
+  /**
+   * Whether `userId` is a live account. No authorisation here: the caller
+   * (the gateway) has already decided this question may be asked, and the
+   * answer carries nothing about the person. Erased and unknown are the same
+   * 404, as everywhere else.
+   */
+  async getStatus(userId: string): Promise<UserStatusRecord> {
+    const user = await this.users.findById(userId);
+
+    if (!user || isDeleted(user)) {
+      throw new AppError(ERROR_CODES.USER_NOT_FOUND, 'User not found', 404);
+    }
+
+    return { userId: user.id, active: true };
   }
 
   private async audienceFor(

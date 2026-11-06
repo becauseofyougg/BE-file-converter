@@ -20,7 +20,7 @@ import {
   type UserProfile,
   type UserProfileRecord,
 } from '@contracts/messages/users.messages';
-import { StorageService } from '@storage/storage.service';
+import { FileStorage } from '@storage/file-storage';
 import { IDENTITY_CLIENT } from '../../messaging/messaging.module';
 import { sendRpc } from '../../messaging/rpc';
 
@@ -39,7 +39,7 @@ export class UsersService {
 
   constructor(
     @Inject(IDENTITY_CLIENT) private readonly identity: ClientProxy,
-    private readonly storage: StorageService,
+    private readonly storage: FileStorage,
   ) {}
 
   async getProfile(input: GetUserProfileRequest): Promise<UserProfile> {
